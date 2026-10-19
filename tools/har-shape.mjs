@@ -76,6 +76,25 @@ function batchexecuteResults(text) {
   return results;
 }
 
+/** Values that identify the user or browser are withheld entirely. */
+const SECRET_HEADERS = new Set(["cookie", "authorization", "x-client-data", "x-goog-authuser"]);
+/** Plain protocol headers whose values are safe and useful to show. */
+const SHOWN_HEADERS = new Set(["content-type", "x-same-domain", "origin", "accept"]);
+
+/** Request header names; x-goog-* values as masked JSON shapes; other values hidden. */
+function describeHeaders(headers) {
+  return headers
+    .filter(({ name }) => !name.startsWith(":"))
+    .map(({ name, value }) => {
+      const lower = name.toLowerCase();
+      if (SECRET_HEADERS.has(lower)) return `${lower}=<withheld>`;
+      if (SHOWN_HEADERS.has(lower)) return `${lower}=${value}`;
+      if (lower.startsWith("x-goog-") || lower.startsWith("x-")) return `${lower}=${JSON.stringify(shapeNestedJson(value))}`;
+      return lower;
+    })
+    .join(" | ");
+}
+
 function maskPath(pathname) {
   return pathname
     .split("/")
@@ -99,9 +118,11 @@ for (const entry of har.log?.entries ?? []) {
     .join(" ");
   console.log(`\n=== ${request.method} ${url.host}${maskPath(url.pathname)} [${response.status}]`);
   if (query) console.log(`query: ${query}`);
+  if (isBatch) console.log(`headers: ${describeHeaders(request.headers ?? [])}`);
 
   if (isBatch) {
     const form = new URLSearchParams(request.postData?.text ?? "");
+    console.log(`form fields: ${[...form.keys()].join(" ")}`);
     const freq = form.get("f.req");
     if (freq) {
       try {
