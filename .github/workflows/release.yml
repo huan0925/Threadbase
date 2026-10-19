@@ -1,9 +1,8 @@
 name: Release
 
-# Publishes a GitHub Release with the installable tarball; README install
-# instructions point at the latest release's asset. Trigger it by pushing a
-# tag like v0.1.0, or with "Run workflow" in the Actions tab, which tags the
-# selected commit with the version from package.json.
+# Publishes a GitHub Release with the packaged extension. Trigger it with
+# "Run workflow" in the Actions tab (it tags the selected commit with the
+# version from package.json) or by pushing a matching tag like v0.2.0.
 on:
   push:
     tags: ["v*"]
@@ -17,12 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          cache: npm
+      - run: npm ci
       - name: Resolve release tag
         run: |
           tag="v$(node -p 'require("./package.json").version')"
@@ -31,19 +29,14 @@ jobs:
             exit 1
           fi
           echo "TAG=$tag" >> "$GITHUB_ENV"
-      - run: pnpm typecheck
-      - run: pnpm test
-      - name: Pack
-        run: |
-          npm pack
-          mv threadbase-cli-*.tgz threadbase-cli.tgz
-      - name: Smoke-test the tarball
-        run: |
-          npm install -g ./threadbase-cli.tgz
-          THREADBASE_DB="$RUNNER_TEMP/smoke.db" threadbase import packages/importers/test/fixtures/claude-conversations.json
-          THREADBASE_DB="$RUNNER_TEMP/smoke.db" threadbase search 轉接頭 | grep -q Claude
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Package
+        run: cd dist && zip -r ../threadbase-extension.zip .
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         # Creates the tag on this commit when it doesn't exist yet (manual runs).
-        run: gh release create "$TAG" threadbase-cli.tgz --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+        run: gh release create "$TAG" threadbase-extension.zip --target "$GITHUB_SHA" --title "$TAG" --generate-notes

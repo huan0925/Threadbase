@@ -9,18 +9,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm build
-      - name: Install the packed CLI and run it
-        run: |
-          npm pack
-          npm install -g ./threadbase-cli-*.tgz
-          THREADBASE_DB="$RUNNER_TEMP/smoke.db" threadbase import packages/importers/test/fixtures/claude-conversations.json
-          THREADBASE_DB="$RUNNER_TEMP/smoke.db" threadbase search 轉接頭 | grep -q Claude
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

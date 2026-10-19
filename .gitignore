@@ -1,6 +1,5 @@
 node_modules/
 dist/
-*.tsbuildinfo
-*.db
-*.db-*
+*.zip
+test-results/
 .DS_Store

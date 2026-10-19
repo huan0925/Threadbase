@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Threadbase",
+  "description": "Search all your AI chats (ChatGPT, Claude) in one place. Everything stays on your computer.",
+  "version": "0.0.0",
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "action": {
+    "default_title": "Search your AI chats",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["content-chatgpt.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["content-claude.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": ["https://chatgpt.com/*", "https://claude.ai/*"],
+  "permissions": ["storage", "unlimitedStorage"]
+}
