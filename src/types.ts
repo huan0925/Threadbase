@@ -5,11 +5,12 @@
  */
 
 /** Identifier of the AI service a conversation came from. */
-export type SourceId = "chatgpt" | "claude";
+export type SourceId = "chatgpt" | "claude" | "gemini";
 
 export const SOURCE_NAMES: Record<SourceId, string> = {
   chatgpt: "ChatGPT",
   claude: "Claude",
+  gemini: "Gemini",
 };
 
 export type Role = "user" | "assistant" | "system" | "tool";

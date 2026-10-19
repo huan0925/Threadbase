@@ -16,6 +16,7 @@ const ctx = await context({
     background: "src/background.ts",
     "content-chatgpt": "src/content/chatgpt.ts",
     "content-claude": "src/content/claude.ts",
+    "content-gemini": "src/content/gemini.ts",
     popup: "src/ui/popup.ts",
     view: "src/ui/view.ts",
   },

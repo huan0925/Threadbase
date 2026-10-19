@@ -10,10 +10,11 @@ import {
 } from "./messages.ts";
 import { CHATGPT_ORIGIN } from "./providers/chatgpt.ts";
 import { CLAUDE_ORIGIN } from "./providers/claude.ts";
+import { GEMINI_ORIGIN } from "./providers/gemini.ts";
 import { decideSyncMode } from "./schedule.ts";
 import type { SourceId } from "./types.ts";
 
-const ORIGINS: Record<SourceId, string> = { chatgpt: CHATGPT_ORIGIN, claude: CLAUDE_ORIGIN };
+const ORIGINS: Record<SourceId, string> = { chatgpt: CHATGPT_ORIGIN, claude: CLAUDE_ORIGIN, gemini: GEMINI_ORIGIN };
 /** Tabs this extension opened just to sync, closed again when the sync succeeds. */
 const OPENED_TABS_KEY = "openedTabs";
 

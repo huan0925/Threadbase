@@ -4,8 +4,8 @@ import { search, toSearchable, type SearchableConversation, type SearchHit } fro
 import { SOURCE_NAMES, type SourceId } from "../types.ts";
 import { el, formatAgo, formatDate, highlighted, sourceTag } from "./dom.ts";
 
-const SOURCES: SourceId[] = ["chatgpt", "claude"];
-const SITES: Record<SourceId, string> = { chatgpt: "chatgpt.com", claude: "claude.ai" };
+const SOURCES: SourceId[] = ["chatgpt", "claude", "gemini"];
+const SITES: Record<SourceId, string> = { chatgpt: "chatgpt.com", claude: "claude.ai", gemini: "gemini.google.com" };
 const MAX_RESULTS = 50;
 
 const queryInput = document.querySelector<HTMLInputElement>("#query")!;
@@ -82,7 +82,7 @@ function renderSourceRow(source: SourceId, status: SyncStatus, count: number): H
     text = `Sync failed: ${status.error}`;
     error = true;
   } else if (status.lastSuccessAt !== null) {
-    text = `${count.toLocaleString()} chats · synced ${formatAgo(status.lastSuccessAt)}`;
+    text = `${count.toLocaleString()} chat${count === 1 ? "" : "s"} · synced ${formatAgo(status.lastSuccessAt)}`;
   } else {
     text = "Not synced yet";
   }

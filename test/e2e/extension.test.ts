@@ -11,11 +11,11 @@ import { chromium, type BrowserContext, type Page, type Worker } from "playwrigh
 import type { SyncStatus } from "../../src/messages.ts";
 import type { ChatGPTConversation } from "../../src/providers/chatgpt.ts";
 import type { ClaudeConversation } from "../../src/providers/claude.ts";
-import { fixture } from "../helpers.ts";
+import { batchexecuteBody, fixture } from "../helpers.ts";
 
 /**
- * Loads the built extension (dist/) into Chromium and points chatgpt.com and
- * claude.ai at a local HTTPS server playing both sites. Host-level redirection
+ * Loads the built extension (dist/) into Chromium and points chatgpt.com,
+ * claude.ai and gemini.google.com at a local HTTPS server playing all three. Host-level redirection
  * (rather than Playwright request routing) also covers tabs the extension
  * opens itself.
  */
@@ -23,6 +23,7 @@ import { fixture } from "../helpers.ts";
 const dist = fileURLToPath(new URL("../../dist", import.meta.url));
 const chatgptConversations = fixture<ChatGPTConversation[]>("chatgpt-conversations.json");
 const claudeConversations = fixture<ClaudeConversation[]>("claude-conversations.json");
+const geminiChat = fixture<unknown[]>("gemini-chat.json");
 
 const fakeSites = {
   chatgptLoggedIn: true,
@@ -39,15 +40,24 @@ before(async () => {
   const certDir = mkdtempSync(join(tmpdir(), "threadbase-cert-"));
   execFileSync("openssl", [
     "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=threadbase-test",
-    "-addext", "subjectAltName=DNS:chatgpt.com,DNS:claude.ai",
+    "-addext", "subjectAltName=DNS:chatgpt.com,DNS:claude.ai,DNS:gemini.google.com",
     "-keyout", join(certDir, "key.pem"), "-out", join(certDir, "cert.pem"),
   ], { stdio: "ignore" });
   server = createServer(
     { key: readFileSync(join(certDir, "key.pem")), cert: readFileSync(join(certDir, "cert.pem")) },
-    (request, response) => {
+    async (request, response) => {
       const url = new URL(request.url ?? "/", `https://${request.headers.host}`);
-      const reply = url.hostname === "claude.ai" ? serveClaude(url) : serveChatGPT(url, request.headers.authorization);
-      if ("html" in reply) {
+      let body = "";
+      for await (const chunk of request) body += chunk;
+      const reply =
+        url.hostname === "claude.ai"
+          ? serveClaude(url)
+          : url.hostname === "gemini.google.com"
+            ? serveGemini(url, body)
+            : serveChatGPT(url, request.headers.authorization);
+      if ("text" in reply) {
+        response.writeHead(200, { "content-type": "application/json" }).end(reply.text);
+      } else if ("html" in reply) {
         response.writeHead(200, { "content-type": "text/html" }).end(reply.html);
       } else {
         response.writeHead(reply.status ?? 200, { "content-type": "application/json" }).end(JSON.stringify(reply.json ?? {}));
@@ -63,7 +73,7 @@ before(async () => {
     args: [
       `--disable-extensions-except=${dist}`,
       `--load-extension=${dist}`,
-      `--host-resolver-rules=MAP chatgpt.com 127.0.0.1:${port}, MAP claude.ai 127.0.0.1:${port}`,
+      `--host-resolver-rules=MAP chatgpt.com 127.0.0.1:${port}, MAP claude.ai 127.0.0.1:${port}, MAP gemini.google.com 127.0.0.1:${port}`,
       "--ignore-certificate-errors",
       "--no-proxy-server",
     ],
@@ -77,7 +87,7 @@ after(async () => {
   server?.close();
 });
 
-type Reply = { html: string } | { status?: number; json?: unknown };
+type Reply = { html: string } | { text: string } | { status?: number; json?: unknown };
 
 function serveChatGPT(url: URL, authorization: string | undefined): Reply {
   const authorized = authorization === "Bearer test-token";
@@ -116,6 +126,23 @@ function serveClaude(url: URL): Reply {
     return conversation ? { json: conversation } : { status: 404 };
   }
   return { html: "<title>Claude (fake)</title><p>fake claude.ai</p>" };
+}
+
+function serveGemini(url: URL, body: string): Reply {
+  if (url.pathname === "/_/BardChatUi/data/batchexecute") {
+    const form = new URLSearchParams(body);
+    if (form.get("at") !== "xsrf-test") return { status: 400 };
+    const [[[rpcid, args]]] = JSON.parse(form.get("f.req")!) as [[[string, string]]];
+    if (rpcid === "MaZiqc") {
+      const item = ["c_aaaa1111bbbb2222", "報稅文件", null, null, null, [1792301486, 535038000]];
+      return { text: batchexecuteBody(rpcid, [null, null, [item]]) };
+    }
+    if (rpcid === "hNvQHb" && JSON.parse(args)[0] === "c_aaaa1111bbbb2222") {
+      return { text: batchexecuteBody(rpcid, geminiChat) };
+    }
+    return { status: 400 };
+  }
+  return { html: `<title>Gemini (fake)</title><script>WIZ_global_data={"SNlM0e":"xsrf-test","cfb2h":"bl-test","FdrFJe":"-1"}</script>` };
 }
 
 async function status(source: string): Promise<Partial<SyncStatus>> {
@@ -163,15 +190,21 @@ test("visiting each site syncs its whole history automatically", async () => {
   const claudeStatus = await waitForStatus("claude", (s) => typeof s.lastSuccessAt === "number");
   assert.deepEqual(claudeStatus.lastResult, { listed: 2, fetched: 2, failed: 0 });
 
+  const gemini = await context.newPage();
+  await gemini.goto("https://gemini.google.com/app");
+  const geminiStatus = await waitForStatus("gemini", (s) => typeof s.lastSuccessAt === "number");
+  assert.deepEqual(geminiStatus.lastResult, { listed: 1, fetched: 1, failed: 0 });
+
   await chatgpt.close();
   await claude.close();
+  await gemini.close();
 });
 
 test("the popup searches across services", async () => {
   const popup = await openPopup();
-  await popup.waitForSelector("text=Search 4 conversations");
+  await popup.waitForSelector("text=Search 5 conversations");
 
-  assert.deepEqual(await resultTitles(popup, "房貸"), ["報稅文件整理"]);
+  assert.deepEqual(await resultTitles(popup, "房貸"), ["報稅文件", "報稅文件整理"], "Gemini's chat is newer");
   // SCREENSHOT_DIR=… npm run test:e2e saves what the popup looks like.
   if (process.env.SCREENSHOT_DIR) await popup.screenshot({ path: join(process.env.SCREENSHOT_DIR, "popup.png") });
   assert.deepEqual(await resultTitles(popup, "pg_trgm ilike"), ["Postgres index for search"]);
@@ -181,12 +214,13 @@ test("the popup searches across services", async () => {
   const rows = await popup.locator(".source-row .status").allTextContents();
   assert.match(rows[0]!, /^2 chats · synced just now$/);
   assert.match(rows[1]!, /^2 chats · synced just now$/);
+  assert.match(rows[2]!, /^1 chat · synced just now$/);
   await popup.close();
 });
 
 test("the saved copy shows the active branch with matches highlighted", async () => {
   const popup = await openPopup();
-  await resultTitles(popup, "房貸");
+  assert.deepEqual(await resultTitles(popup, "扣除"), ["報稅文件整理"]);
   const [viewer] = await Promise.all([context.waitForEvent("page"), popup.click("text=Saved copy")]);
   await viewer.waitForSelector(".message");
 
@@ -211,7 +245,7 @@ test("Sync opens the site in a background tab, syncs new chats and closes it", a
 
   const after = await waitForStatus("chatgpt", (s) => s.lastSuccessAt !== before.lastSuccessAt && !s.running);
   assert.deepEqual(after.lastResult, { listed: 3, fetched: 1, failed: 0 }, "only the new chat is downloaded");
-  await popup.waitForSelector("text=Search 5 conversations");
+  await popup.waitForSelector("text=Search 6 conversations");
   assert.deepEqual(await resultTitles(popup, "壽司"), ["壽司店推薦"]);
 
   await popup.waitForTimeout(500);

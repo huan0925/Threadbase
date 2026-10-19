@@ -13,7 +13,7 @@
 // Built for Google's batchexecute format (gemini.google.com) and plain JSON.
 import { readFileSync } from "node:fs";
 
-const LONG_ARRAY = 12;
+const LONG_ARRAY = 30;
 const LIST_PREVIEW = 2;
 const MAX_DEPTH = 24;
 

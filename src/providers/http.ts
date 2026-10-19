@@ -19,15 +19,15 @@ export interface GetJsonOptions {
 const MAX_ATTEMPTS = 4;
 
 /**
- * GETs JSON from the site the content script runs on, so the request carries
- * the user's session cookies like the site's own requests do. Retries rate
- * limiting (429) and server errors with exponential backoff.
+ * Requests a URL on the site the content script runs on, so the request
+ * carries the user's session cookies like the site's own requests do.
+ * Retries rate limiting (429) and server errors with exponential backoff.
  */
-export async function getJson<T>(url: string, options: GetJsonOptions): Promise<T> {
+export async function fetchWithRetry(url: string, init: RequestInit, options: GetJsonOptions): Promise<Response> {
   const retryDelayMs = options.retryDelayMs ?? 2000;
   for (let attempt = 1; ; attempt++) {
-    const response = await options.fetch(url, { credentials: "include", headers: options.headers });
-    if (response.ok) return (await response.json()) as T;
+    const response = await options.fetch(url, { credentials: "include", ...init, headers: options.headers });
+    if (response.ok) return response;
     if (response.status === 401 || response.status === 403) throw new NotLoggedInError(options.site);
 
     const retryable = response.status === 429 || response.status >= 500;
@@ -36,6 +36,10 @@ export async function getJson<T>(url: string, options: GetJsonOptions): Promise<
     }
     await sleep(retryDelayMs * 2 ** (attempt - 1));
   }
+}
+
+export async function getJson<T>(url: string, options: GetJsonOptions): Promise<T> {
+  return (await (await fetchWithRetry(url, {}, options)).json()) as T;
 }
 
 export function sleep(ms: number): Promise<void> {

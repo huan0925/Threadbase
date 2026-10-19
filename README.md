@@ -3,12 +3,12 @@
 **One searchable place for all your AI chat history.**
 
 You asked an AI something months ago and want the answer back, but you can't
-remember whether it was ChatGPT or Claude. Threadbase is a Chrome extension
+remember whether it was ChatGPT, Claude or Gemini. Threadbase is a Chrome extension
 that quietly keeps a copy of your conversations from each service and lets
 you search all of them at once.
 
-- **No exports, no setup.** Stay signed in to chatgpt.com and claude.ai as
-  usual. Threadbase reads your history through your own signed-in browser.
+- **No exports, no setup.** Stay signed in to chatgpt.com, claude.ai and
+  gemini.google.com as usual. Threadbase reads your history through your own signed-in browser.
 - **Stays on your computer.** Conversations are stored inside the extension
   in your browser. Nothing is sent to any server, and Threadbase never sees
   your password.
@@ -38,8 +38,8 @@ chats are kept.
 
 ## Use
 
-1. **Open [chatgpt.com](https://chatgpt.com) and [claude.ai](https://claude.ai)
-   once while signed in.** Threadbase syncs your whole history in the
+1. **Open [chatgpt.com](https://chatgpt.com), [claude.ai](https://claude.ai)
+   and [gemini.google.com](https://gemini.google.com) once while signed in.** Threadbase syncs your whole history in the
    background; the first sync can take a few minutes if you have many chats.
    You can keep using the site meanwhile.
 2. **Click the Threadbase icon and type.** Every word must appear somewhere in
@@ -64,9 +64,10 @@ folder isn't the extension: you probably downloaded "Source code" instead of
 
 - Conversations are stored in the extension's own storage (IndexedDB) in your
   browser profile. To delete them, remove the extension.
-- The extension only talks to chatgpt.com and claude.ai, from the sites' own
-  tabs, using your existing session, the same way the sites' pages do.
-- It requests access to those two sites only, plus storage permissions.
+- The extension only talks to chatgpt.com, claude.ai and gemini.google.com,
+  from the sites' own tabs, using your existing session, the same way the
+  sites' pages do.
+- It requests access to those three sites only, plus storage permissions.
 
 ## Limitations
 
@@ -74,6 +75,10 @@ folder isn't the extension: you probably downloaded "Source code" instead of
   they aren't official APIs. If a site changes them, syncing that site breaks
   until Threadbase is updated. Please
   [open an issue](https://github.com/huan0925/Threadbase/issues) if it does.
+- Gemini's internal format is unlabeled positional data, mapped from
+  recordings of the live site, so it's the most likely to need fixes. For
+  Gemini, only the reply draft you chose is saved, and images and files
+  aren't.
 - Chats you delete on a site stay in Threadbase.
 - ChatGPT archived chats and chats inside ChatGPT Projects may not be included
   yet.
@@ -82,9 +87,9 @@ folder isn't the extension: you probably downloaded "Source code" instead of
 ## How it works
 
 ```
- chatgpt.com tab ─┐  content script reads your history    ┌─ popup: search
-                  ├─ through the site's own endpoints ───►│  background worker → IndexedDB
- claude.ai tab ───┘  (src/providers/*)                    └─ view.html: saved copy
+ chatgpt.com tab ───────┐  content script reads your history    ┌─ popup: search
+ claude.ai tab ─────────┼─ through the site's own endpoints ───►│  background worker → IndexedDB
+ gemini.google.com tab ─┘  (src/providers/*)                    └─ view.html: saved copy
 ```
 
 | Path | Purpose |
@@ -126,6 +131,12 @@ chromium`) and `openssl`.
 4. Add tests with an anonymized sample response under `test/fixtures/`.
    Never commit real conversations.
 
+To learn a site's internal API without sharing anyone's chats, record the
+site's traffic in DevTools (Network → Export HAR, sanitized) and run
+`node tools/har-shape.mjs recording.har <host>`. It prints the structure of
+every JSON and batchexecute call with all text masked to its length. Delete
+the HAR file afterwards; it contains the conversations.
+
 ### Releasing
 
 Bump `version` in `package.json`, then open **Actions → Release → Run
@@ -135,7 +146,7 @@ GitHub Release.
 ## Roadmap
 
 - [x] ChatGPT and Claude, automatic sync, search, saved copies
-- [ ] Gemini
+- [x] Gemini
 - [ ] Chrome Web Store listing
 - [ ] Faster search for very large histories (SQLite full-text index)
 - [ ] Export your Threadbase data

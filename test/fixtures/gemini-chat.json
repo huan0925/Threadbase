@@ -1,0 +1,27 @@
+[
+  [
+    [
+      ["c_aaaa1111bbbb2222", "r_turn2"],
+      ["c_aaaa1111bbbb2222", "r_turn1", "rc_cand1b"],
+      [["那房貸利息可以扣多少？", null, null, null, [[]]], 1, null, 1, "aaaa1111bbbb2222", null, null, null, false],
+      [[["rc_turn2a", ["自用住宅購屋借款利息，每戶每年上限 30 萬元。"]]], null],
+      [1792301486, 535038000]
+    ],
+    [
+      ["c_aaaa1111bbbb2222", "r_turn1"],
+      null,
+      [["報稅要準備什麼文件？", null, null, null, [[]]], 1, null, 1, "aaaa1111bbbb2222", null, null, null, false],
+      [
+        [
+          ["rc_cand1a", ["草稿 A：只要身分證。"]],
+          ["rc_cand1b", ["需要身分證、扣繳憑單和保險費收據。"]]
+        ],
+        null
+      ],
+      [1792301371, 362239000]
+    ]
+  ],
+  null,
+  null,
+  []
+]

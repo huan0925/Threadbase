@@ -10,6 +10,7 @@
   --error: #c92a2a;
   --chatgpt: #10a37f;
   --claude: #c96442;
+  --gemini: #1a73e8;
   color-scheme: light dark;
 }
 
@@ -65,6 +66,10 @@ mark {
 
 .source-tag.claude {
   background: var(--claude);
+}
+
+.source-tag.gemini {
+  background: var(--gemini);
 }
 
 /* Popup */
