@@ -18,10 +18,36 @@ of them.
 
 ## Supported sources
 
-| Source  | How to export                                   | File to import                      |
-| ------- | ----------------------------------------------- | ----------------------------------- |
-| ChatGPT | Settings → Data controls → Export data          | the emailed `.zip` (or `conversations.json`) |
-| Claude  | Settings → Privacy → Export data                | the emailed `.zip` (or `conversations.json`) |
+Each service emails you a download link to your data. Request the export on the
+**website** (not the phone app), and download it soon: the links expire.
+
+### ChatGPT
+
+1. On [chatgpt.com](https://chatgpt.com), click your profile picture →
+   **Settings** → **Data controls** → **Export data** → **Export**.
+   (Also reachable from the profile menu → **Help** → **Privacy center**.)
+2. Wait for the email from OpenAI (usually minutes, sometimes longer) and
+   download the `.zip`.
+
+Export isn't available to members of ChatGPT **Business, Enterprise or
+Healthcare** workspaces; only the workspace owner can export your data there.
+If your account has both a personal and a work workspace, switch to the
+personal one first.
+
+### Claude
+
+1. On [claude.ai](https://claude.ai), click your name → **Settings** →
+   **Privacy** → **Export data**.
+2. Download the file from the email.
+
+### What to import
+
+`threadbase import` accepts whatever you ended up with:
+
+- the downloaded **`.zip`**,
+- the **folder** it was unzipped into (Safari unzips downloads automatically), or
+- the **`conversations.json`** file from inside it. Other files in the export,
+  like `users.json` or `projects.json`, don't contain chats.
 
 More importers are on the [roadmap](#roadmap). Each importer is a small,
 self-contained parser, so adding one is a great first contribution.
@@ -45,7 +71,7 @@ npm install -g https://github.com/huan0925/Threadbase/releases/latest/download/t
 **3. Import your chats and search**
 
 Export your data from each service (see [Supported sources](#supported-sources)),
-then import the downloaded `.zip` files:
+then import what you downloaded:
 
 ```sh
 threadbase import ~/Downloads/chatgpt-export.zip ~/Downloads/claude-export.zip

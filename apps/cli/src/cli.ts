@@ -7,7 +7,7 @@ import { importers, loadExport } from "@threadbase/importers";
 const USAGE = `threadbase — search all your AI chat history in one place
 
 Usage:
-  threadbase import <export.zip|conversations.json>... [--source <source>]
+  threadbase import <export.zip|folder|conversations.json>... [--source <source>]
   threadbase search <query> [--source <source>] [--limit <n>] [--json]
   threadbase show <conversation-id> [--json]
   threadbase stats
@@ -67,7 +67,7 @@ export async function main(argv: string[]): Promise<number> {
 
 async function importCommand(store: Store, paths: string[], source: string | undefined): Promise<number> {
   if (paths.length === 0) {
-    console.error("Usage: threadbase import <export.zip|conversations.json>...");
+    console.error("Usage: threadbase import <export.zip|folder|conversations.json>...");
     return 1;
   }
   let failed = false;

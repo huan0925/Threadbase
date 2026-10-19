@@ -1,6 +1,6 @@
 {
   "name": "threadbase-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Search all your AI chat history (ChatGPT, Claude, ...) in one place, locally",
   "license": "MIT",
   "repository": {

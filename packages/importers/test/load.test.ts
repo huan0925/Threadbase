@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -28,15 +28,29 @@ test("reads conversations.json out of the export zip", async () => {
   assert.equal(conversations.length, 2);
 });
 
+test("reads conversations.json out of an extracted export folder", async () => {
+  const folder = join(dir, "claude-export");
+  mkdirSync(join(folder, "nested"), { recursive: true });
+  copyFileSync(fixture("claude-conversations.json"), join(folder, "nested", "conversations.json"));
+  writeFileSync(join(folder, "users.json"), "[]");
+  const { importer, conversations } = await loadExport(folder);
+  assert.equal(importer.source, "claude");
+  assert.equal(conversations.length, 2);
+
+  const emptyFolder = join(dir, "empty-folder");
+  mkdirSync(emptyFolder);
+  await assert.rejects(loadExport(emptyFolder), /No conversations\.json found in folder/);
+});
+
 test("rejects a forced source that doesn't match", async () => {
   await assert.rejects(loadExport(fixture("claude-conversations.json"), "chatgpt"), /doesn't look like a chatgpt/);
   await assert.rejects(loadExport(fixture("claude-conversations.json"), "bard"), /Unknown source "bard"/);
 });
 
 test("reports unrecognized and empty files", async () => {
-  const other = join(dir, "other.json");
-  writeFileSync(other, JSON.stringify([{ hello: "world" }]));
-  await assert.rejects(loadExport(other), /doesn't look like a supported chat export/);
+  const users = join(dir, "users.json");
+  writeFileSync(users, JSON.stringify([{ uuid: "u", full_name: "Someone" }]));
+  await assert.rejects(loadExport(users), /doesn't look like a supported chat export\. Import the export's \.zip/);
 
   const empty = join(dir, "empty.json");
   writeFileSync(empty, "[]");
