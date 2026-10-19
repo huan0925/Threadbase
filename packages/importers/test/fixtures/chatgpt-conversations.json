@@ -1,0 +1,162 @@
+[
+  {
+    "title": "報稅文件整理",
+    "create_time": 1710201600.123,
+    "update_time": 1710205200.5,
+    "conversation_id": "c0ffee00-0000-4000-8000-000000000001",
+    "id": "c0ffee00-0000-4000-8000-000000000001",
+    "current_node": "a2b",
+    "default_model_slug": "gpt-4o",
+    "mapping": {
+      "root": { "id": "root", "message": null, "parent": null, "children": ["sys"] },
+      "sys": {
+        "id": "sys",
+        "message": {
+          "id": "sys",
+          "author": { "role": "system", "name": null },
+          "create_time": null,
+          "content": { "content_type": "text", "parts": [""] },
+          "metadata": { "is_visually_hidden_from_conversation": true }
+        },
+        "parent": "root",
+        "children": ["ctx"]
+      },
+      "ctx": {
+        "id": "ctx",
+        "message": {
+          "id": "ctx",
+          "author": { "role": "user", "name": null },
+          "create_time": null,
+          "content": { "content_type": "user_editable_context", "user_profile": "I live in Taipei", "user_instructions": "Answer in Traditional Chinese" },
+          "metadata": {}
+        },
+        "parent": "sys",
+        "children": ["u1"]
+      },
+      "u1": {
+        "id": "u1",
+        "message": {
+          "id": "u1",
+          "author": { "role": "user", "name": null },
+          "create_time": 1710201601.0,
+          "content": { "content_type": "text", "parts": ["幫我整理報稅需要準備的文件"] },
+          "metadata": {}
+        },
+        "parent": "ctx",
+        "children": ["a1"]
+      },
+      "a1": {
+        "id": "a1",
+        "message": {
+          "id": "a1",
+          "author": { "role": "assistant", "name": null },
+          "create_time": 1710201610.0,
+          "content": { "content_type": "text", "parts": ["你需要準備：\n1. 身分證\n2. 扣繳憑單\n3. 保險費收據"] },
+          "metadata": { "model_slug": "gpt-4o" }
+        },
+        "parent": "u1",
+        "children": ["u2a", "u2b"]
+      },
+      "u2a": {
+        "id": "u2a",
+        "message": {
+          "id": "u2a",
+          "author": { "role": "user", "name": null },
+          "create_time": 1710201700.0,
+          "content": { "content_type": "text", "parts": ["那房貸呢"] },
+          "metadata": {}
+        },
+        "parent": "a1",
+        "children": ["a2a"]
+      },
+      "a2a": {
+        "id": "a2a",
+        "message": {
+          "id": "a2a",
+          "author": { "role": "assistant", "name": null },
+          "create_time": 1710201710.0,
+          "content": { "content_type": "text", "parts": ["請問你是指房貸利息嗎？"] },
+          "metadata": { "model_slug": "gpt-4o" }
+        },
+        "parent": "u2a",
+        "children": []
+      },
+      "u2b": {
+        "id": "u2b",
+        "message": {
+          "id": "u2b",
+          "author": { "role": "user", "name": null },
+          "create_time": 1710201800.0,
+          "content": { "content_type": "text", "parts": ["房貸利息可以扣除嗎？"] },
+          "metadata": {}
+        },
+        "parent": "a1",
+        "children": ["a2b"]
+      },
+      "a2b": {
+        "id": "a2b",
+        "message": {
+          "id": "a2b",
+          "author": { "role": "assistant", "name": null },
+          "create_time": 1710201810.0,
+          "content": { "content_type": "text", "parts": ["可以，自用住宅購屋借款利息每戶每年上限 30 萬元。"] },
+          "metadata": { "model_slug": "gpt-4o" }
+        },
+        "parent": "u2b",
+        "children": []
+      }
+    }
+  },
+  {
+    "title": "Sourdough starter photo",
+    "create_time": 1712000000,
+    "update_time": 1712000100,
+    "conversation_id": "c0ffee00-0000-4000-8000-000000000002",
+    "current_node": "b2",
+    "mapping": {
+      "b0": { "id": "b0", "message": null, "parent": null, "children": ["b1"] },
+      "b1": {
+        "id": "b1",
+        "message": {
+          "id": "b1",
+          "author": { "role": "user", "name": null },
+          "create_time": 1712000001,
+          "content": {
+            "content_type": "multimodal_text",
+            "parts": [
+              { "content_type": "image_asset_pointer", "asset_pointer": "file-service://file-abc", "width": 512, "height": 512 },
+              "Is my sourdough starter ready to bake with?"
+            ]
+          },
+          "metadata": {}
+        },
+        "parent": "b0",
+        "children": ["b1t"]
+      },
+      "b1t": {
+        "id": "b1t",
+        "message": {
+          "id": "b1t",
+          "author": { "role": "assistant", "name": null },
+          "create_time": 1712000005,
+          "content": { "content_type": "thoughts", "thoughts": [{ "summary": "Inspecting bubbles", "content": "The photo shows..." }] },
+          "metadata": { "model_slug": "o3" }
+        },
+        "parent": "b1",
+        "children": ["b2"]
+      },
+      "b2": {
+        "id": "b2",
+        "message": {
+          "id": "b2",
+          "author": { "role": "assistant", "name": null },
+          "create_time": 1712000010,
+          "content": { "content_type": "text", "parts": ["It has doubled and is bubbly, so it is ready. Try the float test to be sure."] },
+          "metadata": { "model_slug": "o3" }
+        },
+        "parent": "b1t",
+        "children": []
+      }
+    }
+  }
+]

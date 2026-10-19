@@ -1,0 +1,79 @@
+[
+  {
+    "uuid": "5eed0000-0000-4000-8000-000000000001",
+    "name": "Postgres index for search",
+    "created_at": "2025-01-10T09:00:00.000000Z",
+    "updated_at": "2025-01-10T09:05:00.000000Z",
+    "account": { "uuid": "acc00000-0000-4000-8000-000000000000" },
+    "chat_messages": [
+      {
+        "uuid": "m1",
+        "text": "Which index should I use for LIKE '%term%' queries in Postgres?",
+        "content": [{ "type": "text", "text": "Which index should I use for LIKE '%term%' queries in Postgres?" }],
+        "sender": "human",
+        "created_at": "2025-01-10T09:00:00.000000Z",
+        "parent_message_uuid": "00000000-0000-4000-8000-000000000000",
+        "attachments": [{ "file_name": "schema.sql", "file_type": "text/plain", "extracted_content": "CREATE TABLE docs (body text);" }],
+        "files": [{ "file_name": "schema.sql" }]
+      },
+      {
+        "uuid": "m2",
+        "text": "",
+        "content": [
+          { "type": "thinking", "thinking": "They need a trigram index." },
+          { "type": "text", "text": "Use a GIN index with the pg_trgm extension." },
+          {
+            "type": "tool_use",
+            "name": "artifacts",
+            "input": { "id": "trgm", "type": "application/vnd.ant.code", "title": "Trigram index migration", "command": "create", "content": "CREATE EXTENSION pg_trgm;\nCREATE INDEX docs_body_trgm ON docs USING gin (body gin_trgm_ops);" }
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2025-01-10T09:00:10.000000Z",
+        "parent_message_uuid": "m1",
+        "attachments": [],
+        "files": []
+      },
+      {
+        "uuid": "m3",
+        "text": "",
+        "content": [],
+        "sender": "human",
+        "created_at": "2025-01-10T09:01:00.000000Z",
+        "parent_message_uuid": "m2",
+        "attachments": [],
+        "files": []
+      },
+      {
+        "uuid": "m4",
+        "text": "",
+        "content": [{ "type": "text", "text": "Thanks! Does it help ILIKE too?" }],
+        "sender": "human",
+        "created_at": "2025-01-10T09:02:00.000000Z",
+        "parent_message_uuid": "m3",
+        "attachments": [],
+        "files": []
+      },
+      {
+        "uuid": "m5",
+        "text": "",
+        "content": [{ "type": "text", "text": "Yes, gin_trgm_ops supports ILIKE as well." }],
+        "sender": "assistant",
+        "created_at": "2025-01-10T09:02:10.000000Z",
+        "parent_message_uuid": "m4",
+        "attachments": [],
+        "files": []
+      }
+    ]
+  },
+  {
+    "uuid": "5eed0000-0000-4000-8000-000000000002",
+    "name": "",
+    "created_at": "2024-06-01T12:00:00Z",
+    "updated_at": "2024-06-01T12:00:30Z",
+    "chat_messages": [
+      { "uuid": "o1", "text": "日本旅遊需要帶轉接頭嗎？", "sender": "human", "created_at": "2024-06-01T12:00:00Z" },
+      { "uuid": "o2", "text": "日本插座是 A 型，台灣的插頭可以直接用，不需要轉接頭。", "sender": "assistant", "created_at": "2024-06-01T12:00:30Z" }
+    ]
+  }
+]

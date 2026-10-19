@@ -1,0 +1,19 @@
+{
+  "name": "threadbase-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -p tsconfig.check.json",
+    "test": "node --conditions=source --disable-warning=ExperimentalWarning --test \"packages/*/test/**/*.test.ts\" \"apps/*/test/**/*.test.ts\"",
+    "tb": "node --conditions=source --disable-warning=ExperimentalWarning apps/cli/src/main.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "~5.9.3"
+  }
+}

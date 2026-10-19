@@ -1,0 +1,15 @@
+{
+  "name": "@threadbase/core",
+  "version": "0.1.0",
+  "description": "Normalized schema, local SQLite store and search for Threadbase",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"]
+}
