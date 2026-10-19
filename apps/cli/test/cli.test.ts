@@ -29,7 +29,10 @@ test("imports exports from several providers and searches across them", () => {
   assert.match(again.stdout, /\(0 new, 0 updated, 2 unchanged; 0 new messages\)/);
 
   const stats = run("stats");
-  assert.equal(stats.stdout, "ChatGPT: 2 conversations, 8 messages\nClaude: 2 conversations, 6 messages\n");
+  assert.equal(
+    stats.stdout,
+    "ChatGPT: 2 conversations, 8 messages\nClaude: 2 conversations, 6 messages\nSearch: full-text index\n",
+  );
 
   const search = run("search", "轉接頭");
   assert.equal(search.code, 0);

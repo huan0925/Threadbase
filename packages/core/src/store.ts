@@ -35,7 +35,9 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS messages_created_at ON messages(created_at);
+`;
 
+const FTS_SCHEMA = `
 -- Trigram tokenization lets substring search work for languages written
 -- without spaces (Chinese, Japanese), which word tokenizers can't split.
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
@@ -56,6 +58,8 @@ CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE OF content ON mess
   INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
 END;
 `;
+
+const FTS_TRIGGERS = ["messages_fts_insert", "messages_fts_delete", "messages_fts_update"];
 
 export type UpsertStatus = "added" | "updated" | "unchanged";
 
@@ -115,14 +119,27 @@ export interface SourceStats {
 
 type Row = Record<string, unknown>;
 
+export interface StoreOptions {
+  /**
+   * Use the FTS5 full-text index. Defaults to whether this SQLite build has
+   * FTS5 with the trigram tokenizer; some Node builds (e.g. Homebrew's, linked
+   * against a system SQLite) don't. Without it, search falls back to LIKE scans.
+   */
+  fullTextSearch?: boolean;
+}
+
 export class Store {
   readonly #db: DatabaseSync;
+  /** Whether search can use the messages_fts index. */
+  readonly fullTextSearch: boolean;
 
-  constructor(path: string) {
+  constructor(path: string, options: StoreOptions = {}) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.#db = new DatabaseSync(path);
     this.#db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
     this.#db.exec(SCHEMA);
+    this.fullTextSearch = options.fullTextSearch ?? this.#supportsTrigramFts();
+    this.#syncFtsIndex();
     this.#db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   }
 
@@ -151,8 +168,11 @@ export class Store {
   }
 
   search(query: string, options: SearchOptions = {}): SearchHit[] {
-    const { ftsTerms, likeTerms, terms } = parseQuery(query);
+    const parsed = parseQuery(query);
+    const { terms } = parsed;
     if (terms.length === 0) return [];
+    const ftsTerms = this.fullTextSearch ? parsed.ftsTerms : [];
+    const likeTerms = this.fullTextSearch ? parsed.likeTerms : terms;
     const limit = options.limit ?? 20;
 
     const params: (string | number)[] = [];
@@ -316,6 +336,37 @@ export class Store {
       status = touched ? "updated" : "unchanged";
     }
     return { status, messagesAdded };
+  }
+
+  #supportsTrigramFts(): boolean {
+    try {
+      this.#db.exec("CREATE VIRTUAL TABLE temp.fts_probe USING fts5(x, tokenize = 'trigram'); DROP TABLE temp.fts_probe;");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Creates or removes the FTS index and its triggers to match
+   * `fullTextSearch`. The same database may be opened by Node builds with and
+   * without FTS5, so the index is rebuilt whenever its triggers were missing.
+   */
+  #syncFtsIndex(): void {
+    const placeholders = FTS_TRIGGERS.map(() => "?").join(", ");
+    const { count } = this.#db
+      .prepare(`SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'trigger' AND name IN (${placeholders})`)
+      .get(...FTS_TRIGGERS) as { count: number };
+
+    if (!this.fullTextSearch) {
+      // Leftover triggers would make every insert fail without the fts5 module.
+      for (const name of FTS_TRIGGERS) this.#db.exec(`DROP TRIGGER IF EXISTS ${name}`);
+      return;
+    }
+    this.#db.exec(FTS_SCHEMA);
+    if (count < FTS_TRIGGERS.length) {
+      this.#db.exec("INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')");
+    }
   }
 
   #transaction(fn: () => void): void {

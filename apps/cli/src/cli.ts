@@ -161,6 +161,11 @@ function statsCommand(store: Store): number {
   for (const { source, conversations, messages } of stats) {
     console.log(`${sourceNames.get(source) ?? source}: ${conversations} conversations, ${messages} messages`);
   }
+  console.log(
+    store.fullTextSearch
+      ? "Search: full-text index"
+      : "Search: basic scan (this Node.js build's SQLite has no FTS5; results are the same, just slower on huge histories)",
+  );
   return 0;
 }
 

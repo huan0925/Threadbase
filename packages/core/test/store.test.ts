@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { Store, type NormalizedConversation, type NormalizedMessage } from "../src/index.ts";
 
@@ -41,8 +44,8 @@ const postgres = conversation({
   ],
 });
 
-function seededStore(): Store {
-  const store = new Store(":memory:");
+function seededStore(options?: { fullTextSearch?: boolean }): Store {
+  const store = new Store(":memory:", options);
   store.importAll([taxes, postgres]);
   return store;
 }
@@ -137,4 +140,37 @@ test("shows linear conversations in order", () => {
   const store = seededStore();
   const id = store.search("pg_trgm")[0]!.conversationId;
   assert.deepEqual(store.getConversation(id)?.messages.map((m) => m.sourceId), ["m1", "m2"]);
+});
+
+test("uses FTS5 when this SQLite build has it", () => {
+  assert.equal(new Store(":memory:").fullTextSearch, true);
+});
+
+test("falls back to LIKE search on SQLite builds without FTS5", () => {
+  const store = seededStore({ fullTextSearch: false });
+  assert.equal(store.fullTextSearch, false);
+  assert.equal(store.search("扣繳憑單")[0]?.title, "報稅");
+  assert.equal(store.search("房貸").length, 1);
+  assert.equal(store.search("pg_trgm ILIKE").length, 1);
+  assert.equal(store.search('"GIN index"').length, 1);
+  assert.equal(store.search("%").length, 1);
+  assert.equal(store.search("index", { source: "chatgpt" }).length, 0);
+});
+
+test("keeps the index consistent when opened by builds with and without FTS5", () => {
+  const path = join(mkdtempSync(join(tmpdir(), "threadbase-store-")), "t.db");
+  const withFts = new Store(path);
+  withFts.importAll([taxes]);
+  withFts.close();
+
+  // Leftover FTS triggers would break inserts here.
+  const withoutFts = new Store(path, { fullTextSearch: false });
+  assert.equal(withoutFts.importAll([postgres]).conversationsAdded, 1);
+  withoutFts.close();
+
+  // Messages added without the index are found once it is rebuilt.
+  const reopened = new Store(path);
+  assert.equal(reopened.search("pg_trgm").length, 1);
+  assert.equal(reopened.search("扣繳憑單").length, 1);
+  reopened.close();
 });
