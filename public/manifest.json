@@ -28,6 +28,12 @@
     },
     {
       "matches": ["https://gemini.google.com/*"],
+      "js": ["gemini-page.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
       "js": ["content-gemini.js"],
       "run_at": "document_idle"
     }

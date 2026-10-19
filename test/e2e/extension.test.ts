@@ -53,7 +53,7 @@ before(async () => {
         url.hostname === "claude.ai"
           ? serveClaude(url)
           : url.hostname === "gemini.google.com"
-            ? serveGemini(url, body)
+            ? serveGemini(url, body, request.headers)
             : serveChatGPT(url, request.headers.authorization);
       if ("text" in reply) {
         response.writeHead(200, { "content-type": "application/json" }).end(reply.text);
@@ -128,11 +128,18 @@ function serveClaude(url: URL): Reply {
   return { html: "<title>Claude (fake)</title><p>fake claude.ai</p>" };
 }
 
-function serveGemini(url: URL, body: string): Reply {
+/** Built by the fake page's own script; like the real one, Threadbase can't know it in advance. */
+const GEMINI_EXT_HEADER = `[1,null,"session-${Math.random().toString(36).slice(2)}"]`;
+
+function serveGemini(url: URL, body: string, headers: Record<string, string | string[] | undefined>): Reply {
   if (url.pathname === "/_/BardChatUi/data/batchexecute") {
     const form = new URLSearchParams(body);
     if (form.get("at") !== "xsrf-test") return { status: 400 };
     const [[[rpcid, args]]] = JSON.parse(form.get("f.req")!) as [[[string, string]]];
+    // Like real Gemini: calls without the page's extension header fail with status 13.
+    if (headers["x-goog-ext-525001261-jspb"] !== GEMINI_EXT_HEADER) {
+      return { text: `)]}'\n\n${JSON.stringify([["wrb.fr", rpcid, null, null, null, [13], "generic"]])}\n` };
+    }
     if (rpcid === "MaZiqc") {
       const item = ["c_aaaa1111bbbb2222", "報稅文件", null, null, null, [1792301486, 535038000]];
       return { text: batchexecuteBody(rpcid, [null, null, [item]]) };
@@ -142,7 +149,18 @@ function serveGemini(url: URL, body: string): Reply {
     }
     return { status: 400 };
   }
-  return { html: `<title>Gemini (fake)</title><script>WIZ_global_data={"SNlM0e":"xsrf-test","cfb2h":"bl-test","FdrFJe":"-1"}</script>` };
+  // The page's own script lists chats on load, sending the extension header.
+  return {
+    html: `<title>Gemini (fake)</title>
+<script>WIZ_global_data={"SNlM0e":"xsrf-test","cfb2h":"bl-test","FdrFJe":"-1"}</script>
+<script>
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/_/BardChatUi/data/batchexecute?rpcids=MaZiqc&rt=c");
+  xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8");
+  xhr.setRequestHeader("x-goog-ext-525001261-jspb", ${JSON.stringify(GEMINI_EXT_HEADER)});
+  xhr.send("f.req=" + encodeURIComponent(JSON.stringify([[["MaZiqc", "[35,null,[]]", null, "generic"]]])) + "&at=xsrf-test");
+</script>`,
+  };
 }
 
 async function status(source: string): Promise<Partial<SyncStatus>> {

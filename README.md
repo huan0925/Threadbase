@@ -68,6 +68,9 @@ folder isn't the extension: you probably downloaded "Source code" instead of
   from the sites' own tabs, using your existing session, the same way the
   sites' pages do.
 - It requests access to those three sites only, plus storage permissions.
+- On gemini.google.com, a small script also runs inside the page to reuse
+  the request headers Gemini's own scripts add to its calls (which Gemini
+  requires). It only reads those headers and keeps them in the page.
 
 ## Limitations
 

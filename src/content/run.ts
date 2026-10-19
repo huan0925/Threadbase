@@ -36,7 +36,11 @@ export function runContentScript(client: ProviderClient): void {
         await sendToBackground({ type: "sync-end", source, result });
       } catch (error) {
         const message =
-          error instanceof Error && error.name === "NotLoggedInError" ? "not-logged-in" : String(error);
+          error instanceof Error && error.name === "NotLoggedInError"
+            ? "not-logged-in"
+            : error instanceof Error
+              ? error.message
+              : String(error);
         await sendToBackground({ type: "sync-end", source, error: message });
       }
     } finally {

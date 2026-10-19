@@ -7,6 +7,8 @@ import { fetchWithRetry, NotLoggedInError, type FetchLike } from "./http.ts";
  * own UI uses. Responses are positional JSON arrays rather than objects; the
  * positions below were mapped from recordings of the live site (made with
  * tools/har-shape.mjs) and are the first thing to check if syncing breaks.
+ * Calls must also carry x-goog-ext-*-jspb headers built by the page's
+ * scripts, which src/content/gemini-page.ts captures from the page's own calls.
  */
 
 export const GEMINI_ORIGIN = "https://gemini.google.com";
@@ -30,8 +32,23 @@ interface SessionTokens {
   sid: string | null;
 }
 
+/** <html> attribute where src/content/gemini-page.ts publishes the page's headers. */
+export const GEMINI_HEADERS_ATTRIBUTE = "data-threadbase-gemini-headers";
+
+/** x-goog-ext-*-jspb headers from the page's own batchexecute calls. */
+export interface CapturedGeminiHeaders {
+  /** From the most recent call. */
+  latest: Record<string, string>;
+  /** From the most recent call of each RPC. */
+  byRpc: Record<string, Record<string, string>>;
+}
+
 /** What the content script can read from the Gemini page it runs in. */
 export interface GeminiPage {
+  /** Resolves once the page has made a call whose headers can be reused (or after a timeout). */
+  ready(): Promise<void>;
+  /** Headers the page's own calls carried, preferring ones from the same RPC. */
+  headers(rpcid: string): Record<string, string>;
   /** Text of the page's inline scripts, which hold WIZ_global_data. */
   scripts(): string;
   /** Path of the current page, sent as `source-path` like the page's own calls. */
@@ -51,7 +68,7 @@ export function createGeminiClient(fetch: FetchLike, page?: GeminiPage, origin =
   const titles = new Map<string, string>();
 
   const call = async (rpcid: string, args: Json[]): Promise<Json> => {
-    tokens ??= sessionTokens(fetch, origin, page);
+    tokens ??= (page?.ready() ?? Promise.resolve()).then(() => sessionTokens(fetch, origin, page));
     const { at, bl, sid } = await tokens;
     const query = new URLSearchParams({ rpcids: rpcid, "source-path": page?.path() || "/app" });
     if (bl) query.set("bl", bl);
@@ -70,7 +87,11 @@ export function createGeminiClient(fetch: FetchLike, page?: GeminiPage, origin =
       {
         fetch,
         site: "Gemini",
-        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8", "X-Same-Domain": "1" },
+        headers: {
+          ...page?.headers(rpcid),
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+          "X-Same-Domain": "1",
+        },
       },
     );
     return parseBatchResponse(await response.text(), rpcid);
@@ -174,7 +195,7 @@ function toSummary(chat: Json): ConversationSummary | null {
   return {
     id,
     title: typeof title === "string" ? title : "",
-    // The list's timestamp position isn't pinned down, so take its first [seconds, nanos] pair.
+    // Recorded at index 5 (index 2 is "pinned"); found by shape in case it moves.
     updatedAt: Array.isArray(chat) ? (chat.map(toTimestamp).find((t) => t !== null) ?? null) : null,
   };
 }

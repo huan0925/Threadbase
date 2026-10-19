@@ -114,9 +114,11 @@ test("client fetches every page of a long chat and titles it from the list", asy
   assert.equal(result.messages[1]?.sourceId, "rc_cand1b");
 });
 
-test("client prefers the open page's tokens, path and language", async () => {
+test("client sends the page's tokens, path, language and extension headers", async () => {
   const site = geminiSite({ null: [null, null, [listItem("c_1", "First", 1792301486)]] }, {});
   const client = createGeminiClient(site.fetch, {
+    ready: async () => {},
+    headers: (rpcid) => ({ "x-goog-ext-73010989-jspb": `[0]`, "x-goog-ext-525001261-jspb": `[1,"${rpcid}"]` }),
     scripts: () => `WIZ_global_data = {"SNlM0e":"page-token","cfb2h":"page-bl","FdrFJe":"page-sid"}`,
     path: () => "/app/abcd1234abcd1234",
     language: () => "zh-TW",
@@ -129,6 +131,10 @@ test("client prefers the open page's tokens, path and language", async () => {
   assert.equal(call?.query.get("f.sid"), "page-sid");
   assert.equal(call?.query.get("source-path"), "/app/abcd1234abcd1234");
   assert.equal(call?.query.get("hl"), "zh-TW");
+  const headers = site.requests.find((r) => r.path.startsWith("/_/BardChatUi"))?.headers;
+  assert.equal(headers?.["x-goog-ext-73010989-jspb"], "[0]");
+  assert.equal(headers?.["x-goog-ext-525001261-jspb"], `[1,"MaZiqc"]`);
+  assert.equal(headers?.["X-Same-Domain"], "1");
 });
 
 test("reads tokens only when the XSRF token is present", () => {
