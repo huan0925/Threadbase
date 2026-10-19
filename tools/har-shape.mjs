@@ -116,7 +116,10 @@ for (const entry of har.log?.entries ?? []) {
   const query = [...url.searchParams.keys()]
     .map((key) => (key === "rpcids" ? `rpcids=${url.searchParams.get(key)}` : key === "source-path" ? `source-path=${maskPath(url.searchParams.get(key))}` : key))
     .join(" ");
-  console.log(`\n=== ${request.method} ${url.host}${maskPath(url.pathname)} [${response.status}]`);
+  const fromExtension = JSON.stringify(entry._initiator ?? {}).includes("chrome-extension://");
+  console.log(
+    `\n=== ${request.method} ${url.host}${maskPath(url.pathname)} [${response.status}]${fromExtension ? " (sent by an extension)" : ""}`,
+  );
   if (query) console.log(`query: ${query}`);
   if (isBatch) console.log(`headers: ${describeHeaders(request.headers ?? [])}`);
 
