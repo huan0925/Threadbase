@@ -30,23 +30,36 @@ interface SessionTokens {
   sid: string | null;
 }
 
+/** What the content script can read from the Gemini page it runs in. */
+export interface GeminiPage {
+  /** Text of the page's inline scripts, which hold WIZ_global_data. */
+  scripts(): string;
+  /** Path of the current page, sent as `source-path` like the page's own calls. */
+  path(): string;
+  /** UI language, sent as `hl`. */
+  language(): string | null;
+}
+
 type Json = unknown;
 /** One conversation turn from hNvQHb: a prompt, its reply candidates, a timestamp. */
 type Turn = Json[];
 
-export function createGeminiClient(fetch: FetchLike, origin = GEMINI_ORIGIN): ProviderClient {
+export function createGeminiClient(fetch: FetchLike, page?: GeminiPage, origin = GEMINI_ORIGIN): ProviderClient {
   let tokens: Promise<SessionTokens> | undefined;
   let requestId = Math.floor(Math.random() * 90_000) + 10_000;
   /** Conversation id → title, filled while listing (the chat itself doesn't carry one). */
   const titles = new Map<string, string>();
 
   const call = async (rpcid: string, args: Json[]): Promise<Json> => {
-    tokens ??= fetchSessionTokens(fetch, origin);
+    tokens ??= sessionTokens(fetch, origin, page);
     const { at, bl, sid } = await tokens;
-    const query = new URLSearchParams({ rpcids: rpcid, "source-path": "/app", rt: "c" });
+    const query = new URLSearchParams({ rpcids: rpcid, "source-path": page?.path() || "/app" });
     if (bl) query.set("bl", bl);
     if (sid) query.set("f.sid", sid);
+    const language = page?.language();
+    if (language) query.set("hl", language);
     query.set("_reqid", String((requestId += 100_000)));
+    query.set("rt", "c");
     const body = new URLSearchParams({
       "f.req": JSON.stringify([[[rpcid, JSON.stringify(args), null, "generic"]]]),
       at,
@@ -105,14 +118,25 @@ export function createGeminiClient(fetch: FetchLike, origin = GEMINI_ORIGIN): Pr
   };
 }
 
-/** Reads the batchexecute tokens from the app page, as the page's own scripts do. */
-async function fetchSessionTokens(fetch: FetchLike, origin: string): Promise<SessionTokens> {
+/**
+ * Reads the batchexecute tokens the page's own scripts use: from the open
+ * page when possible, so requests belong to the same page session, else
+ * from a freshly fetched app page.
+ */
+async function sessionTokens(fetch: FetchLike, origin: string, page: GeminiPage | undefined): Promise<SessionTokens> {
+  const fromPage = page ? readTokens(page.scripts()) : null;
+  if (fromPage) return fromPage;
   const html = await (await fetchWithRetry(`${origin}/app`, {}, { fetch, site: "Gemini" })).text();
+  // Signed-out visitors get the landing page, which has no XSRF token.
+  const fetched = readTokens(html);
+  if (!fetched) throw new NotLoggedInError("Gemini");
+  return fetched;
+}
+
+export function readTokens(html: string): SessionTokens | null {
   const value = (key: string) => html.match(new RegExp(`"${key}":"([^"]*)"`))?.[1] ?? null;
   const at = value("SNlM0e");
-  // Signed-out visitors get the landing page, which has no XSRF token.
-  if (!at) throw new NotLoggedInError("Gemini");
-  return { at, bl: value("cfb2h"), sid: value("FdrFJe") };
+  return at ? { at, bl: value("cfb2h"), sid: value("FdrFJe") } : null;
 }
 
 /**
@@ -131,7 +155,11 @@ export function parseBatchResponse(text: string, rpcid: string): Json {
     if (!Array.isArray(chunk)) continue;
     for (const item of chunk) {
       if (Array.isArray(item) && item[0] === "wrb.fr" && item[1] === rpcid) {
-        if (typeof item[2] !== "string") throw new Error(`Gemini returned no data for ${rpcid}`);
+        if (typeof item[2] !== "string") {
+          // Failed calls carry a status code where the payload would be, e.g. [3] for a bad request.
+          const code = item.slice(3).find((field: Json) => Array.isArray(field) && typeof field[0] === "number");
+          throw new Error(`Gemini rejected ${rpcid}${code ? ` (status ${JSON.stringify(code)})` : ""}`);
+        }
         return JSON.parse(item[2]);
       }
     }

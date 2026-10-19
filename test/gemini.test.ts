@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createGeminiClient, normalizeGeminiConversation, parseBatchResponse } from "../src/providers/gemini.ts";
+import { createGeminiClient, normalizeGeminiConversation, parseBatchResponse, readTokens } from "../src/providers/gemini.ts";
 import { batchexecuteBody, fakeSite, fixture } from "./helpers.ts";
 
 type Turn = unknown[];
@@ -11,7 +11,7 @@ test("parses batchexecute responses", () => {
   assert.deepEqual(parseBatchResponse(batchexecuteBody("abc", [1, ["x"]]), "abc"), [1, ["x"]]);
   assert.throws(() => parseBatchResponse(batchexecuteBody("abc", [1]), "other"), /no result for other/);
   const failed = `)]}'\n\n50\n${JSON.stringify([["wrb.fr", "abc", null, null, null, [3], "generic"]])}\n`;
-  assert.throws(() => parseBatchResponse(failed, "abc"), /no data for abc/);
+  assert.throws(() => parseBatchResponse(failed, "abc"), /^Error: Gemini rejected abc \(status \[3\]\)$/);
 });
 
 test("maps conversation metadata", () => {
@@ -112,6 +112,28 @@ test("client fetches every page of a long chat and titles it from the list", asy
   assert.equal(result.title, "報稅文件");
   assert.equal(result.messages.length, 4);
   assert.equal(result.messages[1]?.sourceId, "rc_cand1b");
+});
+
+test("client prefers the open page's tokens, path and language", async () => {
+  const site = geminiSite({ null: [null, null, [listItem("c_1", "First", 1792301486)]] }, {});
+  const client = createGeminiClient(site.fetch, {
+    scripts: () => `WIZ_global_data = {"SNlM0e":"page-token","cfb2h":"page-bl","FdrFJe":"page-sid"}`,
+    path: () => "/app/abcd1234abcd1234",
+    language: () => "zh-TW",
+  });
+  for await (const _ of client.listConversations());
+  assert.ok(!site.requests.some((r) => r.path === "/app"), "no extra page fetch");
+  const [call] = site.calls;
+  assert.equal(call?.at, "page-token");
+  assert.equal(call?.query.get("bl"), "page-bl");
+  assert.equal(call?.query.get("f.sid"), "page-sid");
+  assert.equal(call?.query.get("source-path"), "/app/abcd1234abcd1234");
+  assert.equal(call?.query.get("hl"), "zh-TW");
+});
+
+test("reads tokens only when the XSRF token is present", () => {
+  assert.equal(readTokens(`{"cfb2h":"x"}`), null);
+  assert.deepEqual(readTokens(`{"SNlM0e":"t"}`), { at: "t", bl: null, sid: null });
 });
 
 test("client reports a signed-out session", async () => {
