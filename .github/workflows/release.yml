@@ -39,4 +39,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         # Creates the tag on this commit when it doesn't exist yet (manual runs).
-        run: gh release create "$TAG" threadbase-extension.zip --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+        run: |
+          cat > notes.md <<'NOTES'
+          ## Install
+
+          Download **threadbase-extension.zip** below (not "Source code"), unzip it, then in
+          `chrome://extensions` turn on **Developer mode**, click **Load unpacked** and select
+          the unzipped folder. See the [README](https://github.com/huan0925/Threadbase#install) for details.
+          NOTES
+          gh release create "$TAG" threadbase-extension.zip --target "$GITHUB_SHA" --title "$TAG" \
+            --notes-file notes.md --generate-notes

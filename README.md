@@ -21,10 +21,11 @@ Threadbase isn't in the Chrome Web Store yet, so it's installed by hand. It
 takes about a minute and works in Chrome, Edge, Brave, Arc and other
 Chromium-based browsers.
 
-1. Download **`threadbase-extension.zip`** from the
-   [latest release](https://github.com/huan0925/Threadbase/releases/latest)
-   and unzip it. Keep the folder somewhere permanent; the browser loads the
-   extension from it.
+1. Download **`threadbase-extension.zip`** from the **Assets** of the
+   [latest release](https://github.com/huan0925/Threadbase/releases/latest),
+   **not** "Source code", which GitHub adds to every release. Unzip it and
+   keep the folder somewhere permanent; the browser loads the extension from
+   it. The folder should contain `manifest.json` directly.
 2. Open `chrome://extensions` (in Edge: `edge://extensions`).
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and select the unzipped folder.
@@ -53,6 +54,11 @@ chats are kept.
    site in a background tab if needed.
 
 If the popup says **Sign in to …**, sign in on that site and press Sync again.
+
+**"Manifest file is missing or unreadable"** when loading means the selected
+folder isn't the extension: you probably downloaded "Source code" instead of
+`threadbase-extension.zip`, or picked the folder one level above
+`manifest.json`.
 
 ## Privacy
 
