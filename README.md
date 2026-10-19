@@ -26,16 +26,34 @@ of them.
 More importers are on the [roadmap](#roadmap). Each importer is a small,
 self-contained parser, so adding one is a great first contribution.
 
-## Quick start
+## Install
 
-Requires Node.js 22.18 or newer and [pnpm](https://pnpm.io).
+Threadbase runs on macOS, Windows and Linux. Setup takes about two minutes.
+
+**1. Install Node.js** (skip if `node -v` already prints v22.13 or newer)
+
+Download the **LTS** installer from [nodejs.org](https://nodejs.org) and run it.
+
+**2. Install Threadbase**
+
+Open a terminal (macOS: *Terminal*; Windows: *PowerShell*) and run:
 
 ```sh
-pnpm install
-pnpm tb import ~/Downloads/chatgpt-export.zip ~/Downloads/claude-export.zip
-pnpm tb search 房貸 利息
-pnpm tb show 12
+npm install -g https://github.com/huan0925/Threadbase/releases/latest/download/threadbase-cli.tgz
 ```
+
+**3. Import your chats and search**
+
+Export your data from each service (see [Supported sources](#supported-sources)),
+then import the downloaded `.zip` files:
+
+```sh
+threadbase import ~/Downloads/chatgpt-export.zip ~/Downloads/claude-export.zip
+threadbase search 房貸 利息
+```
+
+> **Tip:** instead of typing a file path, type `threadbase import ` (with a
+> trailing space) and drag the file from Finder or Explorer into the terminal.
 
 ```
 [ChatGPT] 報稅文件整理 · 2024-03-12 · #12
@@ -43,14 +61,32 @@ pnpm tb show 12
   https://chatgpt.com/c/…
 ```
 
-Commands:
+Open the link to continue the conversation in the original app, or read it
+right in the terminal with `threadbase show 12`.
+
+### Updating and uninstalling
+
+- **Update:** run the same `npm install -g …` command again. Your data is kept.
+- **Uninstall:** `npm uninstall -g threadbase-cli`. Your data lives in
+  `~/.threadbase/`; delete that folder to remove it too.
+
+### Troubleshooting
+
+| Problem | Fix |
+| ------- | --- |
+| `command not found: npm` | Node.js isn't installed yet, or the terminal was open during install. Install it, then open a new terminal. |
+| `Threadbase needs Node.js 22.13 or newer` | Install the current LTS from [nodejs.org](https://nodejs.org). |
+| `EACCES: permission denied` (macOS/Linux) | See npm's guide to [fixing global install permissions](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally). |
+| `threadbase` isn't recognized (Windows) | Close and reopen PowerShell so it picks up the new command. |
+
+## Usage
 
 | Command | Description |
 | ------- | ----------- |
-| `import <file>... [--source chatgpt\|claude]` | Import exports; the source is auto-detected. |
-| `search <query> [--source s] [--limit n] [--json]` | Terms are AND-ed; use `"double quotes"` for a phrase. |
-| `show <id> [--json]` | Print a conversation (the branch you last saw, for branched chats). |
-| `stats` | Count conversations and messages per source. |
+| `threadbase import <file>... [--source chatgpt\|claude]` | Import exports; the source is auto-detected. Re-importing a newer export only adds what's new. |
+| `threadbase search <query> [--source s] [--limit n] [--json]` | Terms are AND-ed; use `"double quotes"` for a phrase. |
+| `threadbase show <id> [--json]` | Print a conversation (the branch you last saw, for branched chats). |
+| `threadbase stats` | Count conversations and messages per source. |
 
 The database lives at `~/.threadbase/threadbase.db`; override it with `--db`
 or `THREADBASE_DB`.
@@ -66,7 +102,7 @@ or `THREADBASE_DB`.
 | ------- | ------- |
 | `packages/core` | The normalized schema, the SQLite store and search. |
 | `packages/importers` | One parser per source plus zip/JSON loading and auto-detection. |
-| `apps/cli` | The `threadbase` command. |
+| `apps/cli` | The `threadbase` command, bundled into one dependency-free file for release. |
 
 Conversations are stored as trees, because editing or regenerating a message
 creates branches (ChatGPT exports every branch). Each conversation also keeps
@@ -75,11 +111,27 @@ without asking you to export again.
 
 ## Development
 
+Requires Node.js 22.18 or newer (for native TypeScript) and [pnpm](https://pnpm.io).
+
 ```sh
-pnpm test        # node:test, runs the TypeScript sources directly
+pnpm install
+pnpm tb search 房貸   # run the CLI from source
+pnpm test             # node:test, runs the TypeScript sources directly
 pnpm typecheck
-pnpm build       # emits dist/ for publishing
+pnpm bundle           # bundle the CLI into dist/ (what the release ships)
 ```
+
+### Releasing
+
+Bump `version` in the root `package.json`, then push a matching tag:
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+The Release workflow tests, packs and smoke-tests the CLI, then publishes a
+GitHub Release with `threadbase-cli.tgz`, which the install command always
+fetches from the latest release.
 
 TypeScript runs natively through Node's type stripping, so the code avoids
 non-erasable syntax (`enum`, parameter properties, namespaces).

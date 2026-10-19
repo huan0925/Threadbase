@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
 
 jobs:
@@ -19,3 +18,9 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: Install the packed CLI and run it
+        run: |
+          npm pack
+          npm install -g ./threadbase-cli-*.tgz
+          THREADBASE_DB="$RUNNER_TEMP/smoke.db" threadbase import packages/importers/test/fixtures/claude-conversations.json
+          THREADBASE_DB="$RUNNER_TEMP/smoke.db" threadbase search 轉接頭 | grep -q Claude

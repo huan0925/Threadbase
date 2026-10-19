@@ -1,15 +1,12 @@
 {
-  "name": "threadbase",
+  "name": "@threadbase/cli",
   "version": "0.1.0",
   "description": "Search all your AI chat history in one place",
   "license": "MIT",
   "type": "module",
-  "bin": {
-    "threadbase": "./dist/main.js"
-  },
-  "files": ["dist"],
   "dependencies": {
     "@threadbase/core": "workspace:*",
     "@threadbase/importers": "workspace:*"
-  }
+  },
+  "private": true
 }

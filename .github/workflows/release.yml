@@ -1,0 +1,44 @@
+name: Release
+
+# Push a tag like v0.1.0 to publish a GitHub Release with the installable
+# tarball. README install instructions point at the latest release's asset.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check tag matches package.json version
+        run: |
+          version="v$(node -p 'require("./package.json").version')"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $version" >&2
+            exit 1
+          fi
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: Pack
+        run: |
+          npm pack
+          mv threadbase-cli-*.tgz threadbase-cli.tgz
+      - name: Smoke-test the tarball
+        run: |
+          npm install -g ./threadbase-cli.tgz
+          THREADBASE_DB="$RUNNER_TEMP/smoke.db" threadbase import packages/importers/test/fixtures/claude-conversations.json
+          THREADBASE_DB="$RUNNER_TEMP/smoke.db" threadbase search 轉接頭 | grep -q Claude
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" threadbase-cli.tgz --title "$GITHUB_REF_NAME" --generate-notes

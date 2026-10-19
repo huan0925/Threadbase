@@ -1,12 +1,26 @@
 {
-  "name": "threadbase-monorepo",
-  "private": true,
+  "name": "threadbase-cli",
+  "version": "0.1.0",
+  "description": "Search all your AI chat history (ChatGPT, Claude, ...) in one place, locally",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/huan0925/Threadbase.git"
+  },
   "type": "module",
+  "bin": {
+    "threadbase": "dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
   "packageManager": "pnpm@10.28.0",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=22.13"
   },
   "scripts": {
+    "bundle": "node scripts/bundle.mjs",
+    "prepack": "node scripts/bundle.mjs",
     "build": "tsc -b",
     "typecheck": "tsc -p tsconfig.check.json",
     "test": "node --conditions=source --disable-warning=ExperimentalWarning --test \"packages/*/test/**/*.test.ts\" \"apps/*/test/**/*.test.ts\"",
@@ -14,6 +28,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "fflate": "^0.8.2",
     "typescript": "~5.9.3"
   }
 }
