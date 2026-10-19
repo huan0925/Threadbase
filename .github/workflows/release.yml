@@ -1,10 +1,13 @@
 name: Release
 
-# Push a tag like v0.1.0 to publish a GitHub Release with the installable
-# tarball. README install instructions point at the latest release's asset.
+# Publishes a GitHub Release with the installable tarball; README install
+# instructions point at the latest release's asset. Trigger it by pushing a
+# tag like v0.1.0, or with "Run workflow" in the Actions tab, which tags the
+# selected commit with the version from package.json.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -20,13 +23,14 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Check tag matches package.json version
+      - name: Resolve release tag
         run: |
-          version="v$(node -p 'require("./package.json").version')"
-          if [ "$version" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match package.json version $version" >&2
+          tag="v$(node -p 'require("./package.json").version')"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "$tag" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $tag" >&2
             exit 1
           fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
       - run: pnpm typecheck
       - run: pnpm test
       - name: Pack
@@ -41,4 +45,5 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" threadbase-cli.tgz --title "$GITHUB_REF_NAME" --generate-notes
+        # Creates the tag on this commit when it doesn't exist yet (manual runs).
+        run: gh release create "$TAG" threadbase-cli.tgz --target "$GITHUB_SHA" --title "$TAG" --generate-notes

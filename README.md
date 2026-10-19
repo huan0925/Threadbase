@@ -123,11 +123,9 @@ pnpm bundle           # bundle the CLI into dist/ (what the release ships)
 
 ### Releasing
 
-Bump `version` in the root `package.json`, then push a matching tag:
-
-```sh
-git tag v0.1.0 && git push origin v0.1.0
-```
+Bump `version` in the root `package.json`, then either push a matching tag
+(`git tag v0.1.0 && git push origin v0.1.0`) or open **Actions → Release →
+Run workflow**, which tags the selected commit for you.
 
 The Release workflow tests, packs and smoke-tests the CLI, then publishes a
 GitHub Release with `threadbase-cli.tgz`, which the install command always
