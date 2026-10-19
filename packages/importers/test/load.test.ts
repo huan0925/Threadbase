@@ -47,6 +47,22 @@ test("rejects a forced source that doesn't match", async () => {
   await assert.rejects(loadExport(fixture("claude-conversations.json"), "bard"), /Unknown source "bard"/);
 });
 
+test("explains that Claude's export manifest isn't the data", async () => {
+  const manifest = join(dir, "claude-export.json");
+  writeFileSync(
+    manifest,
+    JSON.stringify({
+      instructions: "Download each file using the export_url.",
+      version: "1.0",
+      data_files: [
+        { batch_index: 0, part: 0, category: "projects", filename: "projects-000.zip", export_url: "https://example.com/p" },
+        { batch_index: 1, part: 0, category: "conversations", filename: "conversations-000.zip", export_url: "https://example.com/c" },
+      ],
+    }),
+  );
+  await assert.rejects(loadExport(manifest), /list of download links.*export_url for conversations-000\.zip/);
+});
+
 test("reports unrecognized and empty files", async () => {
   const users = join(dir, "users.json");
   writeFileSync(users, JSON.stringify([{ uuid: "u", full_name: "Someone" }]));

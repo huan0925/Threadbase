@@ -22,6 +22,9 @@ export interface LoadedExport {
  */
 export async function loadExport(path: string, source?: SourceId): Promise<LoadedExport> {
   const documents = await readJsonDocuments(path);
+  for (const data of documents) {
+    if (isExportManifest(data)) throw new Error(manifestMessage(path, data));
+  }
   const candidates = source ? importers.filter((i) => i.source === source) : importers;
   if (candidates.length === 0) {
     throw new Error(`Unknown source "${source}". Known sources: ${importers.map((i) => i.source).join(", ")}`);
@@ -60,6 +63,30 @@ async function readJsonDocuments(path: string): Promise<unknown[]> {
   const names = Object.keys(files).sort();
   if (names.length === 0) throw new Error(`${path} has no conversations.json inside`);
   return names.map((name) => JSON.parse(decoder.decode(files[name])));
+}
+
+/**
+ * Claude's export arrives as a manifest listing one zip per data category,
+ * each downloaded separately from a short-lived link.
+ */
+interface ExportManifest {
+  data_files: { category?: string; filename?: string }[];
+}
+
+function isExportManifest(data: unknown): data is ExportManifest {
+  return typeof data === "object" && data !== null && Array.isArray((data as ExportManifest).data_files);
+}
+
+function manifestMessage(path: string, manifest: ExportManifest): string {
+  const files = manifest.data_files
+    .filter((file) => file.category === "conversations" && file.filename)
+    .map((file) => file.filename);
+  const wanted = files.length > 0 ? files.join(", ") : "the conversations files";
+  return (
+    `${path} is the export's list of download links, not the data itself. ` +
+    `Open the export_url for ${wanted} in it (links expire 24 hours after the export was created), ` +
+    "then import the downloaded zip."
+  );
 }
 
 function isZip(bytes: Uint8Array): boolean {
