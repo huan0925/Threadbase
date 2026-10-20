@@ -94,7 +94,14 @@ export function createGeminiClient(fetch: FetchLike, page?: GeminiPage, origin =
         },
       },
     );
-    return parseBatchResponse(await response.text(), rpcid);
+    try {
+      return parseBatchResponse(await response.text(), rpcid);
+    } catch (error) {
+      // Say whether the page's own headers went along; it's the usual cause of rejections.
+      const sent = Object.keys(page?.headers(rpcid) ?? {}).filter((name) => /^x-goog-ext-/i.test(name)).length;
+      if (error instanceof Error) error.message += `; sent ${sent} page header${sent === 1 ? "" : "s"}`;
+      throw error;
+    }
   };
 
   return {

@@ -136,8 +136,9 @@ function serveGemini(url: URL, body: string, headers: Record<string, string | st
     const form = new URLSearchParams(body);
     if (form.get("at") !== "xsrf-test") return { status: 400 };
     const [[[rpcid, args]]] = JSON.parse(form.get("f.req")!) as [[[string, string]]];
-    // Like real Gemini: calls without the page's extension header fail with status 13.
-    if (headers["x-goog-ext-525001261-jspb"] !== GEMINI_EXT_HEADER) {
+    // Like real Gemini: calls without the page's extension header, or not sent
+    // from the page itself, fail with status 13.
+    if (headers["x-goog-ext-525001261-jspb"] !== GEMINI_EXT_HEADER || headers["x-sent-by-page"] !== "1") {
       return { text: `)]}'\n\n${JSON.stringify([["wrb.fr", rpcid, null, null, null, [13], "generic"]])}\n` };
     }
     if (rpcid === "MaZiqc") {
@@ -154,6 +155,12 @@ function serveGemini(url: URL, body: string, headers: Record<string, string | st
     html: `<title>Gemini (fake)</title>
 <script>WIZ_global_data={"SNlM0e":"xsrf-test","cfb2h":"bl-test","FdrFJe":"-1"}</script>
 <script>
+  // Stands in for headers Chrome adds only to the page's own requests.
+  const send = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function (body) {
+    this.setRequestHeader("x-sent-by-page", "1");
+    return send.call(this, body);
+  };
   const xhr = new XMLHttpRequest();
   xhr.open("POST", "/_/BardChatUi/data/batchexecute?rpcids=MaZiqc&rt=c");
   xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8");

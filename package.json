@@ -1,6 +1,6 @@
 {
   "name": "threadbase",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "Chrome extension that keeps all your AI chat history (ChatGPT, Claude, Gemini) searchable in one place, locally",
   "license": "MIT",
