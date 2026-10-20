@@ -102,6 +102,20 @@ function maskPath(pathname) {
     .join("/");
 }
 
+/**
+ * True when every script frame that led to the request belongs to an
+ * extension. An extension that wraps XMLHttpRequest or fetch shows up in the
+ * page's own calls too, but those also have the page's frames below it.
+ */
+function sentByExtension(initiator) {
+  const urls = [];
+  for (let stack = initiator?.stack; stack; stack = stack.parent) {
+    for (const frame of stack.callFrames ?? []) if (frame.url) urls.push(frame.url);
+  }
+  if (initiator?.url) urls.push(initiator.url);
+  return urls.length > 0 && urls.every((url) => url.startsWith("chrome-extension://"));
+}
+
 /** batchexecute calls kept for the page-vs-extension comparison at the end. */
 const batchCalls = [];
 
@@ -119,7 +133,7 @@ for (const entry of har.log?.entries ?? []) {
   const query = [...url.searchParams.keys()]
     .map((key) => (key === "rpcids" ? `rpcids=${url.searchParams.get(key)}` : key === "source-path" ? `source-path=${maskPath(url.searchParams.get(key))}` : key))
     .join(" ");
-  const fromExtension = JSON.stringify(entry._initiator ?? {}).includes("chrome-extension://");
+  const fromExtension = sentByExtension(entry._initiator);
   console.log(
     `\n=== ${request.method} ${url.host}${maskPath(url.pathname)} [${response.status}]${fromExtension ? " (sent by an extension)" : ""}`,
   );
@@ -191,6 +205,9 @@ function compareCalls(label, first, second) {
     console.log(`${key}: ${compareValues(first.fields.get(key), second.fields.get(key))}`);
   }
 }
+
+const extensionCount = batchCalls.filter((call) => call.fromExtension).length;
+console.log(`\n### summary: ${batchCalls.length} batchexecute calls, ${extensionCount} sent by an extension`);
 
 // Same-or-different only, so values never appear in the output.
 const extensionCall = batchCalls.find((call) => call.fromExtension);
