@@ -33,11 +33,10 @@ interface SyncTabState {
 }
 
 /**
- * Pacing, so a sync looks like a person reading chats rather than a burst
- * that Google answers with "are you a robot?": at most this many chats per
- * sync (the rest follow in later syncs), and a stop after several failures.
+ * A sync reads chats at a person's pace (see the pauses in content/gemini.ts)
+ * and stops after several failures in a row, usually Google asking "are you
+ * a robot?", rather than pushing on.
  */
-const MAX_CHATS_PER_SYNC = 40;
 const MAX_FAILURES_IN_A_ROW = 3;
 /** A sync tab silent this long is stuck. */
 const STALLED_MS = 60_000;
@@ -156,7 +155,7 @@ export function onGeminiListDone(
     if (diagnosis !== null && Object.keys(index).length === 0) {
       return finish(state, `Couldn't read Gemini's chat list (${diagnosis})`);
     }
-    const queue = geminiQueue(index, new Map(await knownUpdates("gemini"))).slice(0, MAX_CHATS_PER_SYNC);
+    const queue = geminiQueue(index, new Map(await knownUpdates("gemini")));
     const next: SyncTabState = { ...state, phase: "fetch", queue, index: 0, listed: Object.keys(index).length };
     await writeState(next);
     await patchStatus("gemini", { done: 0, total: queue.length, heartbeatAt: Date.now() });
