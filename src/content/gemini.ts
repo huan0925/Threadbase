@@ -1,5 +1,5 @@
 import type { FetchLike } from "../providers/http.ts";
-import { createGeminiClient } from "../providers/gemini.ts";
+import { createGeminiClient, PAGE_HEADERS_USED } from "../providers/gemini.ts";
 import { BRIDGE_SOURCE, isBridgeMessage, type BridgeRequest, type BridgeResponse } from "./gemini-bridge.ts";
 import { runContentScript } from "./run.ts";
 
@@ -35,9 +35,9 @@ const fetchFromPage: FetchLike = async (url, init) => {
     headers: { ...(init.headers as Record<string, string>) },
   };
   window.postMessage(request, location.origin);
-  const { status, text } = await answer;
+  const { status, text, pageHeaderCount } = await answer;
   if (status === 0) throw new Error(`Gemini request failed in the page: ${text}`);
-  return new Response(text, { status });
+  return new Response(text, { status, headers: { [PAGE_HEADERS_USED]: String(pageHeaderCount) } });
 };
 
 runContentScript(

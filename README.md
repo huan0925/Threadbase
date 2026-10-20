@@ -68,9 +68,11 @@ folder isn't the extension: you probably downloaded "Source code" instead of
   from the sites' own tabs, using your existing session, the same way the
   sites' pages do.
 - It requests access to those three sites only, plus storage permissions.
-- On gemini.google.com, a small script also runs inside the page so that
-  Threadbase's Gemini requests are sent from the page itself, like the
-  page's own. It doesn't read or change anything else on the page.
+- On gemini.google.com, a small script also runs inside the page. Gemini
+  only accepts requests that look exactly like the page's own, so this
+  script notes the request headers Gemini's scripts set on their calls and
+  sends Threadbase's Gemini requests from the page with the same headers.
+  It doesn't read or change anything else, and keeps everything in the page.
 
 ## Limitations
 

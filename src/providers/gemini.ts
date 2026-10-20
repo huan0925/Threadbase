@@ -27,10 +27,15 @@ const TURNS_PAGE_SIZE = 100;
 const MAX_PAGES = 500;
 
 /**
- * batchexecute calls are rejected (status 13, BardErrorInfo 1096) without this
- * header: a fixed feature list followed by a per-client session UUID.
+ * Default x-goog-ext-525001261-jspb: a fixed feature list followed by a
+ * per-client session UUID. In the extension, gemini-page.ts replaces it with
+ * the page's own header (which also carries a session block), since the live
+ * site rejects calls with this one alone (status 13, BardErrorInfo 1096).
  */
 const EXTENSION_HEADER_PREFIX = [1, null, null, null, null, null, null, null, [4, 5, 6, 8], null, null, null, null, null, null, null];
+
+/** Response header the content script adds to say how many page headers a call reused. */
+export const PAGE_HEADERS_USED = "x-threadbase-page-headers";
 
 /** Page-embedded values every batchexecute call needs. */
 interface SessionTokens {
@@ -88,7 +93,13 @@ export function createGeminiClient(fetch: FetchLike, page?: GeminiPage, origin =
         },
       },
     );
-    return parseBatchResponse(await response.text(), rpcid);
+    try {
+      return parseBatchResponse(await response.text(), rpcid);
+    } catch (error) {
+      const reused = response.headers.get(PAGE_HEADERS_USED);
+      if (reused !== null && error instanceof Error) error.message += `; reused ${reused} page headers`;
+      throw error;
+    }
   };
 
   return {

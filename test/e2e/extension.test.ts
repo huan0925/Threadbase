@@ -128,14 +128,18 @@ function serveClaude(url: URL): Reply {
   return { html: "<title>Claude (fake)</title><p>fake claude.ai</p>" };
 }
 
-/** Gemini's required extension header: a fixed feature list, then the client's session UUID. */
+/**
+ * Like the real page, the fake page's own scripts build an extension header
+ * holding a session block Threadbase can't produce, plus the time of each call.
+ */
+const GEMINI_SESSION = `SESSION-${Math.random().toString(36).slice(2)}`;
+
+/** Accepts only the page's header: its session block and a timestamp under 1.5 s old. */
 function validGeminiHeader(value: string | string[] | undefined): boolean {
   try {
     const header = JSON.parse(String(value)) as unknown[];
-    return (
-      JSON.stringify(header.slice(0, 16)) === "[1,null,null,null,null,null,null,null,[4,5,6,8],null,null,null,null,null,null,null]" &&
-      /^[0-9A-F-]{36}$/.test(String(header[16]))
-    );
+    const [[seconds, nanos]] = header[19] as [[number, number]];
+    return header[16] === GEMINI_SESSION && Date.now() - (seconds * 1000 + nanos / 1e6) < 1500;
   } catch {
     return false;
   }
@@ -148,8 +152,8 @@ function serveGemini(url: URL, body: string, headers: Record<string, string | st
     if (form.get("at") !== "xsrf-live") return { status: 400 };
     const [[[rpcid, argsJson]]] = JSON.parse(form.get("f.req")!) as [[[string, string]]];
     const args = JSON.parse(argsJson) as unknown[];
-    // Like real Gemini: calls without the extension header, or not sent from
-    // the page itself, fail with status 13.
+    // Like real Gemini: calls without the page's extension header (freshly
+    // stamped), or not sent from the page itself, fail with status 13.
     if (!validGeminiHeader(headers["x-goog-ext-525001261-jspb"]) || headers["x-sent-by-page"] !== "1") {
       return { text: `)]}'\n\n${JSON.stringify([["wrb.fr", rpcid, null, null, null, [13], "generic"]])}\n` };
     }
@@ -174,6 +178,16 @@ function serveGemini(url: URL, body: string, headers: Record<string, string | st
     this.setRequestHeader("x-sent-by-page", "1");
     return send.call(this, body);
   };
+  // The page's own call on load, with the header its scripts build.
+  const now = Date.now();
+  const header = [1, null, null, null, null, null, null, null, [4, 5, 6, 8, 16, 19, 20], null, null, null, null, null, null, null,
+    ${JSON.stringify(GEMINI_SESSION)}, ["token"], null, [[Math.floor(now / 1000), (now % 1000) * 1e6]]];
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/_/BardChatUi/data/batchexecute?rpcids=otAQ7b&rt=c");
+  xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded;charset=utf-8");
+  xhr.setRequestHeader("x-goog-ext-525001261-jspb", JSON.stringify(header));
+  xhr.setRequestHeader("x-goog-ext-73010989-jspb", "[0]");
+  xhr.send("f.req=" + encodeURIComponent(JSON.stringify([[["otAQ7b", "[1]", null, "generic"]]])) + "&at=xsrf-live");
 </script>`,
   };
 }

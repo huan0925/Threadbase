@@ -22,6 +22,8 @@ export interface BridgeResponse {
   id: string;
   status: number;
   text: string;
+  /** How many of the page's own headers the call reused (0 if none were captured). */
+  pageHeaderCount: number;
 }
 
 export function isBridgeMessage<T extends BridgeRequest | BridgeResponse>(data: unknown, type: T["type"]): data is T {
