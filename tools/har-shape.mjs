@@ -210,7 +210,22 @@ const extensionCount = batchCalls.filter((call) => call.fromExtension).length;
 console.log(`\n### summary: ${batchCalls.length} batchexecute calls, ${extensionCount} sent by an extension`);
 
 // Same-or-different only, so values never appear in the output.
-const extensionCall = batchCalls.find((call) => call.fromExtension);
+// Chrome doesn't always record an extension as a request's initiator, so
+// also treat a later call of the same RPC with different arguments (the
+// page lists chats differently from Threadbase) as the extension's.
+const extensionCall =
+  batchCalls.find((call) => call.fromExtension) ??
+  batchCalls.findLast(
+    (call, index) =>
+      index > 0 &&
+      batchCalls.some(
+        (earlier, earlierIndex) =>
+          earlierIndex < index &&
+          earlier.rpcids === call.rpcids &&
+          earlier.fields.get("form f.req") !== call.fields.get("form f.req") &&
+          call.rpcids === "MaZiqc",
+      ),
+  );
 if (extensionCall) {
   const pageCall =
     batchCalls.find((call) => !call.fromExtension && call.rpcids === extensionCall.rpcids) ??

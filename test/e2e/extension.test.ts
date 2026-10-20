@@ -144,7 +144,8 @@ function validGeminiHeader(value: string | string[] | undefined): boolean {
 function serveGemini(url: URL, body: string, headers: Record<string, string | string[] | undefined>): Reply {
   if (url.pathname === "/_/BardChatUi/data/batchexecute") {
     const form = new URLSearchParams(body);
-    if (form.get("at") !== "xsrf-test") return { status: 400 };
+    // The page rotates its token after load; only the current one is accepted.
+    if (form.get("at") !== "xsrf-live") return { status: 400 };
     const [[[rpcid, argsJson]]] = JSON.parse(form.get("f.req")!) as [[[string, string]]];
     const args = JSON.parse(argsJson) as unknown[];
     // Like real Gemini: calls without the extension header, or not sent from
@@ -166,6 +167,7 @@ function serveGemini(url: URL, body: string, headers: Record<string, string | st
     html: `<title>Gemini (fake)</title>
 <script>WIZ_global_data={"SNlM0e":"xsrf-test","cfb2h":"bl-test","FdrFJe":"-1"}</script>
 <script>
+  WIZ_global_data.SNlM0e = "xsrf-live";
   // Stands in for headers Chrome adds only to the page's own requests.
   const send = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.send = function (body) {
