@@ -128,29 +128,40 @@ function serveClaude(url: URL): Reply {
   return { html: "<title>Claude (fake)</title><p>fake claude.ai</p>" };
 }
 
-/** Built by the fake page's own script; like the real one, Threadbase can't know it in advance. */
-const GEMINI_EXT_HEADER = `[1,null,"session-${Math.random().toString(36).slice(2)}"]`;
+/** Gemini's required extension header: a fixed feature list, then the client's session UUID. */
+function validGeminiHeader(value: string | string[] | undefined): boolean {
+  try {
+    const header = JSON.parse(String(value)) as unknown[];
+    return (
+      JSON.stringify(header.slice(0, 16)) === "[1,null,null,null,null,null,null,null,[4,5,6,8],null,null,null,null,null,null,null]" &&
+      /^[0-9A-F-]{36}$/.test(String(header[16]))
+    );
+  } catch {
+    return false;
+  }
+}
 
 function serveGemini(url: URL, body: string, headers: Record<string, string | string[] | undefined>): Reply {
   if (url.pathname === "/_/BardChatUi/data/batchexecute") {
     const form = new URLSearchParams(body);
     if (form.get("at") !== "xsrf-test") return { status: 400 };
-    const [[[rpcid, args]]] = JSON.parse(form.get("f.req")!) as [[[string, string]]];
-    // Like real Gemini: calls without the page's extension header, or not sent
-    // from the page itself, fail with status 13.
-    if (headers["x-goog-ext-525001261-jspb"] !== GEMINI_EXT_HEADER || headers["x-sent-by-page"] !== "1") {
+    const [[[rpcid, argsJson]]] = JSON.parse(form.get("f.req")!) as [[[string, string]]];
+    const args = JSON.parse(argsJson) as unknown[];
+    // Like real Gemini: calls without the extension header, or not sent from
+    // the page itself, fail with status 13.
+    if (!validGeminiHeader(headers["x-goog-ext-525001261-jspb"]) || headers["x-sent-by-page"] !== "1") {
       return { text: `)]}'\n\n${JSON.stringify([["wrb.fr", rpcid, null, null, null, [13], "generic"]])}\n` };
     }
     if (rpcid === "MaZiqc") {
+      const pinned = (args[2] as number[])[0] === 1;
       const item = ["c_aaaa1111bbbb2222", "報稅文件", null, null, null, [1792301486, 535038000]];
-      return { text: batchexecuteBody(rpcid, [null, null, [item]]) };
+      return { text: batchexecuteBody(rpcid, [null, null, pinned ? [] : [item]]) };
     }
-    if (rpcid === "hNvQHb" && JSON.parse(args)[0] === "c_aaaa1111bbbb2222") {
+    if (rpcid === "hNvQHb" && args[0] === "c_aaaa1111bbbb2222") {
       return { text: batchexecuteBody(rpcid, geminiChat) };
     }
     return { status: 400 };
   }
-  // The page's own script lists chats on load, sending the extension header.
   return {
     html: `<title>Gemini (fake)</title>
 <script>WIZ_global_data={"SNlM0e":"xsrf-test","cfb2h":"bl-test","FdrFJe":"-1"}</script>
@@ -161,11 +172,6 @@ function serveGemini(url: URL, body: string, headers: Record<string, string | st
     this.setRequestHeader("x-sent-by-page", "1");
     return send.call(this, body);
   };
-  const xhr = new XMLHttpRequest();
-  xhr.open("POST", "/_/BardChatUi/data/batchexecute?rpcids=MaZiqc&rt=c");
-  xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8");
-  xhr.setRequestHeader("x-goog-ext-525001261-jspb", ${JSON.stringify(GEMINI_EXT_HEADER)});
-  xhr.send("f.req=" + encodeURIComponent(JSON.stringify([[["MaZiqc", "[35,null,[]]", null, "generic"]]])) + "&at=xsrf-test");
 </script>`,
   };
 }

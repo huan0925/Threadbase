@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createGeminiClient, normalizeGeminiConversation, parseBatchResponse, readTokens } from "../src/providers/gemini.ts";
+import {
+  createGeminiClient,
+  normalizeGeminiConversation,
+  parseBatchResponse,
+  readTokens,
+} from "../src/providers/gemini.ts";
 import { batchexecuteBody, fakeSite, fixture } from "./helpers.ts";
 
 type Turn = unknown[];
@@ -53,7 +58,9 @@ function geminiSite(listPages: Record<string, unknown>, chats: Record<string, un
       const [[[rpcid, argsJson]]] = JSON.parse(form.get("f.req")!) as [[[string, string]]];
       const args = JSON.parse(argsJson) as unknown[];
       calls.push({ rpcid, args, at: form.get("at"), query: request.url.searchParams });
-      const payload = rpcid === "MaZiqc" ? listPages[String(args[1])] : chats[String(args[0])];
+      // List pages are keyed "filter:token", where filter 1 is pinned chats and 0 the rest.
+      const payload =
+        rpcid === "MaZiqc" ? listPages[`${(args[2] as number[])[0]}:${args[1]}`] : chats[String(args[0])];
       return new Response(batchexecuteBody(rpcid, payload ?? []));
     },
   });
@@ -63,11 +70,12 @@ function geminiSite(listPages: Record<string, unknown>, chats: Record<string, un
 const listItem = (id: string, title: string, seconds: number) =>
   [id, title, null, null, null, [seconds, 500000000], ...Array(19).fill(null)];
 
-test("client pages through the chat list with the page's session tokens", async () => {
+test("client lists pinned chats, then pages through the rest", async () => {
   const site = geminiSite(
     {
-      null: [null, "page-2", [listItem("c_1", "First", 1792301486), listItem("c_2", "Second", 1792300000)]],
-      "page-2": [null, null, [listItem("c_3", "Third", 1792200000), listItem("c_2", "Second", 1792300000)]],
+      "1:null": [null, null, [listItem("c_pin", "Pinned", 1700000000)]],
+      "0:null": [null, "page-2", [listItem("c_1", "First", 1792301486), listItem("c_2", "Second", 1792300000)]],
+      "0:page-2": [null, null, [listItem("c_3", "Third", 1792200000), listItem("c_2", "Second", 1792300000)]],
     },
     {},
   );
@@ -76,6 +84,7 @@ test("client pages through the chat list with the page's session tokens", async 
   for await (const summary of client.listConversations()) listed.push(summary);
 
   assert.deepEqual(listed, [
+    { id: "c_pin", title: "Pinned", updatedAt: 1700000000500 },
     { id: "c_1", title: "First", updatedAt: 1792301486500 },
     { id: "c_2", title: "Second", updatedAt: 1792300000500 },
     { id: "c_3", title: "Third", updatedAt: 1792200000500 },
@@ -86,13 +95,22 @@ test("client pages through the chat list with the page's session tokens", async 
   assert.equal(first?.query.get("rpcids"), "MaZiqc");
   assert.equal(first?.query.get("bl"), "boq_assistant-bard-web-server_20261015.07_p0");
   assert.equal(first?.query.get("f.sid"), "-123456789");
-  assert.deepEqual(site.calls.map((c) => c.args[1]), [null, "page-2"]);
+  assert.equal(first?.query.get("source-path"), "/app");
+  assert.equal(first?.query.get("hl"), "en");
+  assert.deepEqual(
+    site.calls.map((c) => c.args),
+    [
+      [35, null, [1, null, 1]],
+      [35, null, [0, null, 1]],
+      [35, "page-2", [0, null, 1]],
+    ],
+  );
 });
 
 test("client fetches every page of a long chat and titles it from the list", async () => {
   const [newer, older] = chat[0] as [Turn, Turn];
   const site = geminiSite(
-    { null: [null, null, [listItem("c_aaaa1111bbbb2222", "報稅文件", 1792301486)]] },
+    { "0:null": [null, null, [listItem("c_aaaa1111bbbb2222", "報稅文件", 1792301486)]] },
     {},
   );
   // The second page (requested with the token) returns the older turn.
@@ -103,6 +121,7 @@ test("client fetches every page of a long chat and titles it from the list", asy
     const freq = form.get("f.req");
     if (freq?.includes("hNvQHb")) {
       const args = JSON.parse(JSON.parse(freq)[0][0][1]) as unknown[];
+      assert.deepEqual(args.slice(3), [1, [1], [4], null, 1]);
       return new Response(batchexecuteBody("hNvQHb", pages.get(String(args[2]))));
     }
     return originalFetch(url, init);
@@ -114,13 +133,10 @@ test("client fetches every page of a long chat and titles it from the list", asy
   assert.equal(result.messages[1]?.sourceId, "rc_cand1b");
 });
 
-test("client sends the page's tokens, path, language and extension headers", async () => {
-  const site = geminiSite({ null: [null, null, [listItem("c_1", "First", 1792301486)]] }, {});
+test("client sends the page's tokens, language and the extension headers Gemini requires", async () => {
+  const site = geminiSite({ "0:null": [null, null, [listItem("c_1", "First", 1792301486)]] }, {});
   const client = createGeminiClient(site.fetch, {
-    ready: async () => {},
-    headers: (rpcid) => ({ "x-goog-ext-73010989-jspb": `[0]`, "x-goog-ext-525001261-jspb": `[1,"${rpcid}"]` }),
-    scripts: () => `WIZ_global_data = {"SNlM0e":"page-token","cfb2h":"page-bl","FdrFJe":"page-sid"}`,
-    path: () => "/app/abcd1234abcd1234",
+    scripts: () => `WIZ_global_data = {"SNlM0e": "page-token","cfb2h":"page-bl","FdrFJe":"page-sid"}`,
     language: () => "zh-TW",
   });
   for await (const _ of client.listConversations());
@@ -129,17 +145,21 @@ test("client sends the page's tokens, path, language and extension headers", asy
   assert.equal(call?.at, "page-token");
   assert.equal(call?.query.get("bl"), "page-bl");
   assert.equal(call?.query.get("f.sid"), "page-sid");
-  assert.equal(call?.query.get("source-path"), "/app/abcd1234abcd1234");
   assert.equal(call?.query.get("hl"), "zh-TW");
-  const headers = site.requests.find((r) => r.path.startsWith("/_/BardChatUi"))?.headers;
-  assert.equal(headers?.["x-goog-ext-73010989-jspb"], "[0]");
-  assert.equal(headers?.["x-goog-ext-525001261-jspb"], `[1,"MaZiqc"]`);
-  assert.equal(headers?.["X-Same-Domain"], "1");
+
+  const batchHeaders = site.requests.filter((r) => r.path.startsWith("/_/BardChatUi")).map((r) => r.headers);
+  const ext = JSON.parse(batchHeaders[0]!["x-goog-ext-525001261-jspb"]!) as unknown[];
+  assert.deepEqual(ext.slice(0, 16), [1, null, null, null, null, null, null, null, [4, 5, 6, 8], null, null, null, null, null, null, null]);
+  assert.match(String(ext[16]), /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/, "uppercase session UUID");
+  assert.ok(batchHeaders.every((h) => h["x-goog-ext-525001261-jspb"] === batchHeaders[0]!["x-goog-ext-525001261-jspb"]), "one session id per client");
+  assert.equal(batchHeaders[0]!["x-goog-ext-73010989-jspb"], "[0]");
+  assert.equal(batchHeaders[0]!["X-Same-Domain"], "1");
 });
 
 test("reads tokens only when the XSRF token is present", () => {
   assert.equal(readTokens(`{"cfb2h":"x"}`), null);
   assert.deepEqual(readTokens(`{"SNlM0e":"t"}`), { at: "t", bl: null, sid: null });
+  assert.deepEqual(readTokens(`{"SNlM0e": "t", "cfb2h": "b"}`), { at: "t", bl: "b", sid: null }, "spaces after colons");
 });
 
 test("client reports a signed-out session", async () => {

@@ -6,9 +6,8 @@ import { fetchWithRetry, NotLoggedInError, type FetchLike } from "./http.ts";
  * Gemini, read through the same Google "batchexecute" RPCs gemini.google.com's
  * own UI uses. Responses are positional JSON arrays rather than objects; the
  * positions below were mapped from recordings of the live site (made with
- * tools/har-shape.mjs) and are the first thing to check if syncing breaks.
- * Calls must also carry x-goog-ext-*-jspb headers built by the page's
- * scripts, which src/content/gemini-page.ts captures from the page's own calls.
+ * tools/har-shape.mjs) and match those used by the maintained open-source
+ * client github.com/HanaokaYuzu/Gemini-API. Check them first if syncing breaks.
  */
 
 export const GEMINI_ORIGIN = "https://gemini.google.com";
@@ -18,9 +17,20 @@ const RPC_LIST_CHATS = "MaZiqc";
 const RPC_READ_CHAT = "hNvQHb";
 
 const LIST_PAGE_SIZE = 35;
+/** MaZiqc filters: pinned chats, then all the others. */
+const LIST_FILTERS = [
+  [1, null, 1],
+  [0, null, 1],
+];
 const TURNS_PAGE_SIZE = 100;
 /** Guards against a pagination token that never runs out. */
 const MAX_PAGES = 500;
+
+/**
+ * batchexecute calls are rejected (status 13, BardErrorInfo 1096) without this
+ * header: a fixed feature list followed by a per-client session UUID.
+ */
+const EXTENSION_HEADER_PREFIX = [1, null, null, null, null, null, null, null, [4, 5, 6, 8], null, null, null, null, null, null, null];
 
 /** Page-embedded values every batchexecute call needs. */
 interface SessionTokens {
@@ -32,27 +42,10 @@ interface SessionTokens {
   sid: string | null;
 }
 
-/** <html> attribute where src/content/gemini-page.ts publishes the page's headers. */
-export const GEMINI_HEADERS_ATTRIBUTE = "data-threadbase-gemini-headers";
-
-/** x-goog-ext-*-jspb headers from the page's own batchexecute calls. */
-export interface CapturedGeminiHeaders {
-  /** From the most recent call. */
-  latest: Record<string, string>;
-  /** From the most recent call of each RPC. */
-  byRpc: Record<string, Record<string, string>>;
-}
-
 /** What the content script can read from the Gemini page it runs in. */
 export interface GeminiPage {
-  /** Resolves once the page has made a call whose headers can be reused (or after a timeout). */
-  ready(): Promise<void>;
-  /** Headers the page's own calls carried, preferring ones from the same RPC. */
-  headers(rpcid: string): Record<string, string>;
   /** Text of the page's inline scripts, which hold WIZ_global_data. */
   scripts(): string;
-  /** Path of the current page, sent as `source-path` like the page's own calls. */
-  path(): string;
   /** UI language, sent as `hl`. */
   language(): string | null;
 }
@@ -64,17 +57,17 @@ type Turn = Json[];
 export function createGeminiClient(fetch: FetchLike, page?: GeminiPage, origin = GEMINI_ORIGIN): ProviderClient {
   let tokens: Promise<SessionTokens> | undefined;
   let requestId = Math.floor(Math.random() * 90_000) + 10_000;
+  const extensionHeader = JSON.stringify([...EXTENSION_HEADER_PREFIX, crypto.randomUUID().toUpperCase()]);
   /** Conversation id → title, filled while listing (the chat itself doesn't carry one). */
   const titles = new Map<string, string>();
 
   const call = async (rpcid: string, args: Json[]): Promise<Json> => {
-    tokens ??= (page?.ready() ?? Promise.resolve()).then(() => sessionTokens(fetch, origin, page));
+    tokens ??= sessionTokens(fetch, origin, page);
     const { at, bl, sid } = await tokens;
-    const query = new URLSearchParams({ rpcids: rpcid, "source-path": page?.path() || "/app" });
+    const query = new URLSearchParams({ rpcids: rpcid, "source-path": "/app" });
     if (bl) query.set("bl", bl);
     if (sid) query.set("f.sid", sid);
-    const language = page?.language();
-    if (language) query.set("hl", language);
+    query.set("hl", page?.language() || "en");
     query.set("_reqid", String((requestId += 100_000)));
     query.set("rt", "c");
     const body = new URLSearchParams({
@@ -88,20 +81,14 @@ export function createGeminiClient(fetch: FetchLike, page?: GeminiPage, origin =
         fetch,
         site: "Gemini",
         headers: {
-          ...page?.headers(rpcid),
-          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+          "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
           "X-Same-Domain": "1",
+          "x-goog-ext-525001261-jspb": extensionHeader,
+          "x-goog-ext-73010989-jspb": "[0]",
         },
       },
     );
-    try {
-      return parseBatchResponse(await response.text(), rpcid);
-    } catch (error) {
-      // Say whether the page's own headers went along; it's the usual cause of rejections.
-      const sent = Object.keys(page?.headers(rpcid) ?? {}).filter((name) => /^x-goog-ext-/i.test(name)).length;
-      if (error instanceof Error) error.message += `; sent ${sent} page header${sent === 1 ? "" : "s"}`;
-      throw error;
-    }
+    return parseBatchResponse(await response.text(), rpcid);
   };
 
   return {
@@ -109,24 +96,22 @@ export function createGeminiClient(fetch: FetchLike, page?: GeminiPage, origin =
 
     async *listConversations(): AsyncIterable<ConversationSummary> {
       const seen = new Set<string>();
-      let token: string | null = null;
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const payload = await call(RPC_LIST_CHATS, [
-          LIST_PAGE_SIZE,
-          token,
-          [null, null, 1, null, null, null, null, null, null, 1],
-        ]);
-        const chats = arrayAt(payload, 2);
-        for (const chat of chats) {
-          const summary = toSummary(chat);
-          if (!summary || seen.has(summary.id)) continue;
-          seen.add(summary.id);
-          titles.set(summary.id, summary.title);
-          yield summary;
+      for (const filter of LIST_FILTERS) {
+        let token: string | null = null;
+        for (let page = 0; page < MAX_PAGES; page++) {
+          const payload = await call(RPC_LIST_CHATS, [LIST_PAGE_SIZE, token, filter]);
+          const chats = arrayAt(payload, 2);
+          for (const chat of chats) {
+            const summary = toSummary(chat);
+            if (!summary || seen.has(summary.id)) continue;
+            seen.add(summary.id);
+            titles.set(summary.id, summary.title);
+            yield summary;
+          }
+          const next = at(payload, 1);
+          if (typeof next !== "string" || next === token || chats.length === 0) break;
+          token = next;
         }
-        const next = at(payload, 1);
-        if (typeof next !== "string" || next === token || chats.length === 0) return;
-        token = next;
       }
     },
 
@@ -134,7 +119,7 @@ export function createGeminiClient(fetch: FetchLike, page?: GeminiPage, origin =
       const turns = new Map<string, Turn>();
       let token: string | null = null;
       for (let page = 0; page < MAX_PAGES; page++) {
-        const payload = await call(RPC_READ_CHAT, [id, TURNS_PAGE_SIZE, token, 1, [0], [4], null, 1]);
+        const payload = await call(RPC_READ_CHAT, [id, TURNS_PAGE_SIZE, token, 1, [1], [4], null, 1]);
         // Keyed by response id, so a page served twice can't duplicate turns.
         for (const turn of arrayAt(payload, 0) as Turn[]) turns.set(String(at(turn, 0, 1) ?? turns.size), turn);
         const next = at(payload, 1);
@@ -162,7 +147,7 @@ async function sessionTokens(fetch: FetchLike, origin: string, page: GeminiPage 
 }
 
 export function readTokens(html: string): SessionTokens | null {
-  const value = (key: string) => html.match(new RegExp(`"${key}":"([^"]*)"`))?.[1] ?? null;
+  const value = (key: string) => html.match(new RegExp(`"${key}":\\s*"([^"]*)"`))?.[1] ?? null;
   const at = value("SNlM0e");
   return at ? { at, bl: value("cfb2h"), sid: value("FdrFJe") } : null;
 }
@@ -202,7 +187,7 @@ function toSummary(chat: Json): ConversationSummary | null {
   return {
     id,
     title: typeof title === "string" ? title : "",
-    // Recorded at index 5 (index 2 is "pinned"); found by shape in case it moves.
+    // At index 5 (index 2 is "pinned"); found by shape in case it moves.
     updatedAt: Array.isArray(chat) ? (chat.map(toTimestamp).find((t) => t !== null) ?? null) : null,
   };
 }

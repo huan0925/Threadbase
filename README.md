@@ -68,10 +68,9 @@ folder isn't the extension: you probably downloaded "Source code" instead of
   from the sites' own tabs, using your existing session, the same way the
   sites' pages do.
 - It requests access to those three sites only, plus storage permissions.
-- On gemini.google.com, a small script also runs inside the page. Gemini
-  only accepts calls that look exactly like the page's own, so this script
-  reuses the request headers Gemini's scripts add and sends Threadbase's
-  Gemini requests from the page itself. It keeps everything in the page.
+- On gemini.google.com, a small script also runs inside the page so that
+  Threadbase's Gemini requests are sent from the page itself, like the
+  page's own. It doesn't read or change anything else on the page.
 
 ## Limitations
 
@@ -155,6 +154,13 @@ GitHub Release.
 - [ ] Faster search for very large histories (SQLite full-text index)
 - [ ] Export your Threadbase data
 - [ ] Firefox
+
+## Acknowledgements
+
+Gemini's internal API details (RPC ids, request headers, response
+positions) were cross-checked against
+[HanaokaYuzu/Gemini-API](https://github.com/HanaokaYuzu/Gemini-API), a
+reverse-engineered Python client for the Gemini web app.
 
 ## License
 
