@@ -1,6 +1,7 @@
 import { allConversations, countBySource } from "../db.ts";
 import { readStatus, sendToBackground, statusKey, type SyncStatus } from "../messages.ts";
 import { search, toSearchable, type SearchableConversation, type SearchHit } from "../search.ts";
+import { AUTO_SYNC_CHOICES, AUTO_SYNC_KEY, readAutoSyncMinutes } from "../settings.ts";
 import { SOURCE_NAMES, type SourceId } from "../types.ts";
 import { el, formatAgo, formatDate, highlighted, sourceTag } from "./dom.ts";
 
@@ -117,5 +118,26 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (finished) void loadIndex();
 });
 
+const autoSync = document.querySelector<HTMLSelectElement>("#auto-sync")!;
+
+function autoSyncLabel(minutes: number): string {
+  if (minutes === 0) return "Off";
+  return minutes < 60 ? `Every ${minutes} min` : `Every ${minutes / 60} h`;
+}
+
+async function renderAutoSync(): Promise<void> {
+  const current = await readAutoSyncMinutes();
+  autoSync.replaceChildren(
+    ...AUTO_SYNC_CHOICES.map((minutes) =>
+      el("option", { value: String(minutes), selected: minutes === current }, [autoSyncLabel(minutes)]),
+    ),
+  );
+}
+
+autoSync.addEventListener("change", () => {
+  void chrome.storage.local.set({ [AUTO_SYNC_KEY]: Number(autoSync.value) });
+});
+
 void loadIndex();
 void renderSources();
+void renderAutoSync();

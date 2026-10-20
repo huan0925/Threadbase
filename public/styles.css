@@ -191,6 +191,26 @@ body.popup {
   font-size: 12px;
 }
 
+.auto-sync {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.auto-sync select {
+  padding: 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
 .sync-button:disabled {
   opacity: 0.5;
   cursor: default;

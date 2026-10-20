@@ -10,7 +10,13 @@
       <input id="query" type="search" placeholder="Search all your AI chats…" autofocus />
     </header>
     <main id="results"></main>
-    <footer id="sources"></footer>
+    <footer>
+      <div id="sources"></div>
+      <label class="auto-sync">
+        Auto-sync
+        <select id="auto-sync" aria-label="How often to sync on its own"></select>
+      </label>
+    </footer>
     <script src="popup.js"></script>
   </body>
 </html>

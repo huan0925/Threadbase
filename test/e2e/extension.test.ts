@@ -374,6 +374,51 @@ test("a full Gemini sync pages through the whole chat list", async () => {
   await popup.close();
 });
 
+test("scheduled syncs run quietly in background tabs", async () => {
+  fakeSites.chatgpt.push({
+    ...chatgptConversations[1]!,
+    conversation_id: "c0ffee00-0000-4000-8000-000000000004",
+    title: "電影推薦",
+    update_time: 1730000000,
+  });
+  geminiChats.unshift({
+    id: "c_dddd4444eeee5555",
+    title: "盆栽照顧",
+    updatedAt: [1792500000, 0],
+    payload: [[geminiTurn("c_dddd4444eeee5555", "p1", "多肉植物多久澆水？", "大約兩週一次。", 1792500000)], null, null, []],
+  });
+  fakeSites.claudeLoggedIn = false;
+
+  // Pretend the last syncs were long ago, then let the schedule fire now.
+  await worker.evaluate(async () => {
+    const keys = ["status:chatgpt", "status:claude", "status:gemini"];
+    const statuses = await chrome.storage.local.get(keys);
+    for (const key of keys) statuses[key] = { ...(statuses[key] as object), lastSuccessAt: 1 };
+    await chrome.storage.local.set(statuses);
+    await chrome.alarms.create("auto-sync", { when: Date.now() + 100 });
+  });
+
+  const chatgpt = await waitForStatus("chatgpt", (s) => (s.lastSuccessAt ?? 0) > 1 && !s.running, 40_000);
+  assert.deepEqual(chatgpt.lastResult, { listed: 4, fetched: 1, failed: 0 });
+  const gemini = await waitForStatus("gemini", (s) => (s.lastSuccessAt ?? 0) > 1 && !s.running, 40_000);
+  assert.equal(gemini.lastResult?.fetched, 1, "the new Gemini chat is read");
+  const claude = await waitForStatus("claude", (s) => s.error === "not-logged-in" && !s.running, 40_000);
+  assert.equal(claude.lastSuccessAt, 1);
+
+  await new Promise((r) => setTimeout(r, 500));
+  const open = context.pages().map((p) => p.url());
+  assert.ok(
+    !open.some((url) => /chatgpt\.com|claude\.ai|gemini\.google\.com/.test(url)),
+    `quiet syncs close their tabs, even signed out; open: ${open}`,
+  );
+
+  const popup = await openPopup();
+  assert.deepEqual(await resultTitles(popup, "電影"), ["電影推薦"]);
+  assert.deepEqual(await resultTitles(popup, "多肉"), ["盆栽照顧"]);
+  assert.equal(await popup.locator("#auto-sync").inputValue(), "60", "hourly by default");
+  await popup.close();
+});
+
 test("a signed-out site asks the user to sign in and leaves the tab open", async () => {
   fakeSites.claudeLoggedIn = false;
   const popup = await openPopup();

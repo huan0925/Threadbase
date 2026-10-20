@@ -52,6 +52,11 @@ chats are kept.
    Chats you had on your phone are included, since they're part of your
    account. The **Sync** buttons in the popup sync right away, opening the
    site in a background tab if needed.
+4. **Scheduled syncs.** While Chrome is open, Threadbase also syncs on its
+   own every hour (choose 30 min to 6 h, or off, under **Auto-sync** in the
+   popup), skipping services that synced recently anyway. It works in
+   background tabs and never interrupts you: if a service needs you to sign
+   in or pass a robot check, the popup says so and the tab is closed.
 
 **Gemini syncs differently.** Gemini only answers requests its own page
 makes, so Threadbase saves what the Gemini page loads: chats you open are

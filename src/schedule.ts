@@ -18,3 +18,14 @@ export function decideSyncMode(status: SyncStatus, now: number): SyncMode | null
   if (status.lastSuccessAt === null) return "full";
   return now - status.lastSuccessAt >= AUTO_SYNC_INTERVAL_MS ? "quick" : null;
 }
+
+/**
+ * Whether a scheduled sync should run for a source: not while one is running,
+ * and not if the source synced within most of the interval anyway (say,
+ * because the user opened the site).
+ */
+export function dueForScheduledSync(status: SyncStatus, now: number, intervalMinutes: number): boolean {
+  const running = status.running && status.heartbeatAt !== null && now - status.heartbeatAt < STALE_SYNC_MS;
+  if (running || intervalMinutes <= 0) return false;
+  return status.lastSuccessAt === null || now - status.lastSuccessAt >= intervalMinutes * 60_000 * 0.9;
+}

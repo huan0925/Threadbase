@@ -30,6 +30,8 @@ interface SyncTabState {
   failed: number;
   /** Consecutive chats that didn't load; several in a row mean Gemini stopped answering. */
   failedInARow: number;
+  /** A scheduled sync: never brings its tab forward, even to sign in or pass a robot check. */
+  quiet: boolean;
 }
 
 /**
@@ -44,6 +46,9 @@ export const WATCHDOG_ALARM = "gemini-watchdog";
 
 export const VERIFY_MESSAGE =
   "Google asked to confirm you're not a robot. Finish the check in the Gemini tab, then press Sync to continue";
+/** The same, for a scheduled sync, whose tab is closed instead of shown. */
+const VERIFY_MESSAGE_QUIET =
+  "Google asked to confirm you're not a robot. Open Gemini, finish the check there, then press Sync to continue";
 
 const INDEX_KEY = "gemini:index";
 const STATE_KEY = "gemini:syncTab";
@@ -191,10 +196,10 @@ export function onGeminiStepDone(
   });
 }
 
-/** Starts a sync the user asked for, unless one is already running. */
-export function startGeminiSync(): Promise<void> {
+/** Starts a sync (the user's, or a quiet scheduled one), unless one is already running. */
+export function startGeminiSync(mode: SyncMode, quiet: boolean): Promise<void> {
   return serialized(async () => {
-    if (!(await readState())) await startSyncTab("full", null);
+    if (!(await readState())) await startSyncTab(mode, null, quiet);
   });
 }
 
@@ -222,7 +227,7 @@ export function onGeminiTabRemoved(tabId: number): Promise<void> {
 // ---- Internals (call only inside serialized) -------------------------------------
 
 /** Opens the sync tab: on the app to list chats, or straight on the first chat of `queue`. */
-async function startSyncTab(mode: SyncMode, queue: string[] | null): Promise<void> {
+async function startSyncTab(mode: SyncMode, queue: string[] | null, quiet = false): Promise<void> {
   const enlarge = await readEnlarge();
   const tab = await chrome.tabs.create({ url: geminiSyncUrl(queue?.[0] ?? null, enlarge), active: false });
   if (tab.id === undefined) return;
@@ -237,6 +242,7 @@ async function startSyncTab(mode: SyncMode, queue: string[] | null): Promise<voi
     fetched: 0,
     failed: 0,
     failedInARow: 0,
+    quiet,
   });
   await patchStatus("gemini", {
     running: true,
@@ -259,6 +265,7 @@ async function advance(state: SyncTabState): Promise<GeminiInstruction> {
 async function finish(state: SyncTabState, error?: string, closeTab = true): Promise<GeminiInstruction> {
   await chrome.storage.session.remove(STATE_KEY);
   await chrome.alarms.clear(WATCHDOG_ALARM);
+  if (error === VERIFY_MESSAGE && state.quiet) error = VERIFY_MESSAGE_QUIET;
   await patchStatus("gemini", (status) => ({
     running: false,
     heartbeatAt: null,
@@ -267,10 +274,11 @@ async function finish(state: SyncTabState, error?: string, closeTab = true): Pro
     lastSuccessAt: error ? status.lastSuccessAt : Date.now(),
   }));
   if (closeTab) {
-    if (error === "not-logged-in" || error === VERIFY_MESSAGE) {
+    if ((error === "not-logged-in" || error === VERIFY_MESSAGE) && !state.quiet) {
       await chrome.tabs.update(state.tabId, { active: true }).catch(() => {});
+    } else {
+      await chrome.tabs.remove(state.tabId).catch(() => {});
     }
-    else await chrome.tabs.remove(state.tabId).catch(() => {});
   }
   return { action: "done" };
 }
