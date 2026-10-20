@@ -1,6 +1,6 @@
 import { patchStatus, serialized } from "./background-status.ts";
 import { getConversation, knownUpdates, saveConversation } from "./db.ts";
-import { readStatus, type GeminiInstruction } from "./messages.ts";
+import { NOT_LOGGED_IN, readStatus, ROBOT_CHECK, type GeminiInstruction } from "./messages.ts";
 import { geminiSyncUrl } from "./providers/gemini.ts";
 import { decideSyncMode } from "./schedule.ts";
 import type { ConversationSummary, SyncMode } from "./sync.ts";
@@ -43,12 +43,6 @@ const MAX_FAILURES_IN_A_ROW = 3;
 /** A sync tab silent this long is stuck. */
 const STALLED_MS = 60_000;
 export const WATCHDOG_ALARM = "gemini-watchdog";
-
-export const VERIFY_MESSAGE =
-  "Google asked to confirm you're not a robot. Finish the check in the Gemini tab, then press Sync to continue";
-/** The same, for a scheduled sync, whose tab is closed instead of shown. */
-const VERIFY_MESSAGE_QUIET =
-  "Google asked to confirm you're not a robot. Open Gemini, finish the check there, then press Sync to continue";
 
 const INDEX_KEY = "gemini:index";
 const STATE_KEY = "gemini:syncTab";
@@ -98,7 +92,7 @@ export function onGeminiReady(tabId: number | undefined, signedIn: boolean): Pro
   return serialized(async () => {
     const state = await readState();
     if (!state || state.tabId !== tabId) return { action: "none" };
-    if (!signedIn) return finish(state, "not-logged-in");
+    if (!signedIn) return finish(state, NOT_LOGGED_IN);
     await patchStatus("gemini", { heartbeatAt: Date.now() });
     if (state.phase === "list") return { action: "list", allPages: state.mode === "full" };
     const id = state.queue[state.index];
@@ -189,7 +183,7 @@ export function onGeminiStepDone(
       failedInARow: ok ? 0 : state.failedInARow + 1,
     };
     // Usually a robot check shown inside the page; let the user see it.
-    if (next.failedInARow >= MAX_FAILURES_IN_A_ROW) return finish(next, VERIFY_MESSAGE);
+    if (next.failedInARow >= MAX_FAILURES_IN_A_ROW) return finish(next, ROBOT_CHECK);
     await writeState(next);
     await patchStatus("gemini", { done: next.index, total: next.queue.length, heartbeatAt: Date.now() });
     return advance(next);
@@ -213,7 +207,7 @@ export function onGeminiWatchdog(): Promise<void> {
     const state = await readState();
     if (!state) return chrome.alarms.clear(WATCHDOG_ALARM).then(() => {});
     const { heartbeatAt } = await readStatus("gemini");
-    if (heartbeatAt === null || Date.now() - heartbeatAt > STALLED_MS) await finish(state, VERIFY_MESSAGE);
+    if (heartbeatAt === null || Date.now() - heartbeatAt > STALLED_MS) await finish(state, ROBOT_CHECK);
   });
 }
 
@@ -265,7 +259,6 @@ async function advance(state: SyncTabState): Promise<GeminiInstruction> {
 async function finish(state: SyncTabState, error?: string, closeTab = true): Promise<GeminiInstruction> {
   await chrome.storage.session.remove(STATE_KEY);
   await chrome.alarms.clear(WATCHDOG_ALARM);
-  if (error === VERIFY_MESSAGE && state.quiet) error = VERIFY_MESSAGE_QUIET;
   await patchStatus("gemini", (status) => ({
     running: false,
     heartbeatAt: null,
@@ -274,7 +267,7 @@ async function finish(state: SyncTabState, error?: string, closeTab = true): Pro
     lastSuccessAt: error ? status.lastSuccessAt : Date.now(),
   }));
   if (closeTab) {
-    if ((error === "not-logged-in" || error === VERIFY_MESSAGE) && !state.quiet) {
+    if ((error === NOT_LOGGED_IN || error === ROBOT_CHECK) && !state.quiet) {
       await chrome.tabs.update(state.tabId, { active: true }).catch(() => {});
     } else {
       await chrome.tabs.remove(state.tabId).catch(() => {});

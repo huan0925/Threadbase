@@ -425,7 +425,8 @@ test("a signed-out site asks the user to sign in and leaves the tab open", async
   await popup.locator(".source-row", { hasText: "Claude" }).locator("button").click();
 
   await waitForStatus("claude", (s) => s.error === "not-logged-in" && !s.running);
-  await popup.waitForSelector("text=Sign in to claude.ai, then sync again");
+  await popup.waitForSelector("text=⚠ Sign in to claude.ai");
+  assert.equal(await popup.locator(".source-row", { hasText: "Claude" }).locator("button").textContent(), "Open Claude");
   assert.ok(context.pages().some((p) => p.url().startsWith("https://claude.ai")), "tab stays open for signing in");
   await popup.close();
 });

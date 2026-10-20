@@ -11,7 +11,7 @@ import {
   onGeminiWatchdog,
   startGeminiSync,
 } from "./gemini-backfill.ts";
-import { readStatus, type BackgroundRequest, type BackgroundResponse, type ContentRequest, type SyncBeginResponse } from "./messages.ts";
+import { NOT_LOGGED_IN, readStatus, type BackgroundRequest, type BackgroundResponse, type ContentRequest, type SyncBeginResponse } from "./messages.ts";
 import { CHATGPT_ORIGIN } from "./providers/chatgpt.ts";
 import { CLAUDE_ORIGIN } from "./providers/claude.ts";
 import { GEMINI_ORIGIN } from "./providers/gemini.ts";
@@ -158,7 +158,7 @@ async function finishOpenedTab(tabId: number, error: string | undefined): Promis
   const tab = opened.find((entry) => entry.id === tabId);
   if (!tab) return;
   await chrome.storage.session.set({ [OPENED_TABS_KEY]: opened.filter((entry) => entry.id !== tabId) });
-  if (error === "not-logged-in" && !tab.quiet) await chrome.tabs.update(tabId, { active: true });
+  if (error === NOT_LOGGED_IN && !tab.quiet) await chrome.tabs.update(tabId, { active: true });
   else if (!error || tab.quiet) await chrome.tabs.remove(tabId);
 }
 

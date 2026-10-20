@@ -8,6 +8,7 @@
   --mark: #ffe58a;
   --mark-text: #1c1c1a;
   --error: #c92a2a;
+  --attention: #b35c00;
   --chatgpt: #10a37f;
   --claude: #c96442;
   --gemini: #1a73e8;
@@ -25,6 +26,7 @@
     --mark: #7a5d00;
     --mark-text: #fff6d6;
     --error: #ff8787;
+    --attention: #ffb74d;
   }
 }
 
@@ -173,13 +175,29 @@ body.popup {
   padding: 3px 0;
 }
 
-.source-row .status {
+.source-row .status-block {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.source-row .status {
   color: var(--muted);
 }
 
 .source-row .status.error {
   color: var(--error);
+}
+
+.source-row .status.needs-you {
+  color: var(--attention);
+  font-weight: 600;
+}
+
+.source-row .detail {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .sync-button {

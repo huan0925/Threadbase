@@ -1,4 +1,4 @@
-import { sendToBackground, type ContentRequest, type SyncBeginResponse } from "../messages.ts";
+import { NOT_LOGGED_IN, sendToBackground, type ContentRequest, type SyncBeginResponse } from "../messages.ts";
 import { syncProvider, type ProviderClient, type SyncTarget } from "../sync.ts";
 
 /** Give the site a moment to finish loading before syncing in the background. */
@@ -37,7 +37,7 @@ export function runContentScript(client: ProviderClient): void {
       } catch (error) {
         const message =
           error instanceof Error && error.name === "NotLoggedInError"
-            ? "not-logged-in"
+            ? NOT_LOGGED_IN
             : error instanceof Error
               ? error.message
               : String(error);

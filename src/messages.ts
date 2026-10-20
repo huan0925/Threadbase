@@ -50,6 +50,11 @@ export interface SyncBeginResponse {
   mode: SyncMode | null;
 }
 
+/** Status errors that ask the user to act, rather than report a failure. */
+export const NOT_LOGGED_IN = "not-logged-in";
+/** Google asked to confirm the user isn't a robot (Gemini). */
+export const ROBOT_CHECK = "robot-check";
+
 /** Per-source sync status, kept in chrome.storage.local so the popup can watch it. */
 export interface SyncStatus {
   running: boolean;
@@ -59,7 +64,7 @@ export interface SyncStatus {
   total: number;
   lastSuccessAt: number | null;
   lastResult: SyncResult | null;
-  /** "not-logged-in" or an error message from the last sync. */
+  /** NOT_LOGGED_IN, ROBOT_CHECK, or an error message from the last sync. */
   error: string | null;
   /** A sync the user asked for that the site's tab should run when it loads. */
   pendingMode: SyncMode | null;

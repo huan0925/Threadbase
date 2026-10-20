@@ -1,5 +1,5 @@
 import { allConversations, countBySource } from "../db.ts";
-import { readStatus, sendToBackground, statusKey, type SyncStatus } from "../messages.ts";
+import { NOT_LOGGED_IN, readStatus, ROBOT_CHECK, sendToBackground, statusKey, type SyncStatus } from "../messages.ts";
 import { search, toSearchable, type SearchableConversation, type SearchHit } from "../search.ts";
 import { AUTO_SYNC_CHOICES, AUTO_SYNC_KEY, readAutoSyncMinutes } from "../settings.ts";
 import { SOURCE_NAMES, type SourceId } from "../types.ts";
@@ -26,7 +26,7 @@ function renderResults(): void {
     results.replaceChildren(
       el("p", { className: "empty" }, [
         index.length === 0
-          ? "No chats yet. Sync a service below, or just open chatgpt.com or claude.ai while signed in."
+          ? "No chats yet. Sync a service below, or just open chatgpt.com, claude.ai or gemini.google.com while signed in."
           : `Search ${index.length.toLocaleString()} conversations across your AI services.`,
       ]),
     );
@@ -72,34 +72,63 @@ async function renderSources(): Promise<void> {
 }
 
 function renderSourceRow(source: SourceId, status: SyncStatus, count: number): HTMLElement {
-  let text: string;
-  let error = false;
+  const synced =
+    status.lastSuccessAt !== null
+      ? `${count.toLocaleString()} chat${count === 1 ? "" : "s"} · synced ${formatAgo(status.lastSuccessAt)}`
+      : "Not synced yet";
+
+  // Something only the user can do: say what, keep the sync details, and offer to open the site.
+  const action =
+    status.error === NOT_LOGGED_IN
+      ? `Sign in to ${SITES[source]}`
+      : status.error === ROBOT_CHECK
+        ? `Confirm you're not a robot on ${SOURCE_NAMES[source]}`
+        : null;
+
+  let main: HTMLElement;
+  let detail: string | null = null;
   if (status.running) {
-    text = status.total > 0 ? `Syncing ${status.done}/${status.total}…` : "Checking for new chats…";
-  } else if (status.error === "not-logged-in") {
-    text = `Sign in to ${SITES[source]}, then sync again`;
-    error = true;
+    const text = status.total > 0 ? `Syncing ${status.done}/${status.total}…` : "Checking for new chats…";
+    main = el("span", { className: "status", title: text }, [text]);
+  } else if (action) {
+    main = el("span", { className: "status needs-you", title: action }, [`⚠ ${action}`]);
+    detail = synced;
   } else if (status.error) {
-    text = `Sync failed: ${status.error}`;
-    error = true;
-  } else if (status.lastSuccessAt !== null) {
-    text = `${count.toLocaleString()} chat${count === 1 ? "" : "s"} · synced ${formatAgo(status.lastSuccessAt)}`;
+    const text = `Sync failed: ${status.error}`;
+    main = el("span", { className: "status error", title: text }, [text]);
+    detail = synced;
   } else {
-    text = "Not synced yet";
+    main = el("span", { className: "status", title: synced }, [synced]);
   }
+
+  const button = action
+    ? el("button", { className: "sync-button", onclick: () => void openSite(source) }, [`Open ${SOURCE_NAMES[source]}`])
+    : el(
+        "button",
+        {
+          className: "sync-button",
+          disabled: status.running,
+          onclick: () => void sendToBackground({ type: "start-sync", source }),
+        },
+        ["Sync"],
+      );
+
   return el("div", { className: "source-row" }, [
     sourceTag(source),
-    el("span", { className: `status${error ? " error" : ""}`, title: text }, [text]),
-    el(
-      "button",
-      {
-        className: "sync-button",
-        disabled: status.running,
-        onclick: () => void sendToBackground({ type: "start-sync", source }),
-      },
-      ["Sync"],
-    ),
+    el("div", { className: "status-block" }, [main, ...(detail ? [el("span", { className: "detail" }, [detail])] : [])]),
+    button,
   ]);
+}
+
+/** Shows the site's tab if one is open (such as a sync tab waiting on a check), else opens it. */
+async function openSite(source: SourceId): Promise<void> {
+  const [tab] = await chrome.tabs.query({ url: `https://${SITES[source]}/*` });
+  if (tab?.id === undefined) {
+    await chrome.tabs.create({ url: `https://${SITES[source]}/` });
+    return;
+  }
+  await chrome.tabs.update(tab.id, { active: true });
+  if (tab.windowId !== undefined) await chrome.windows.update(tab.windowId, { focused: true });
 }
 
 let debounce: ReturnType<typeof setTimeout> | undefined;
