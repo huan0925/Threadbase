@@ -178,7 +178,7 @@ function serveGemini(url: URL, body: string, headers: Record<string, string | st
   return {
     html: `<title>Gemini (fake)</title>
 <script>WIZ_global_data={"SNlM0e":"xsrf-test","cfb2h":"bl-test","FdrFJe":"-1"}</script>
-<nav id="chats"></nav>
+<nav id="chats">${geminiChats.map((c) => `<a href="/app/${c.id.slice(2)}">${c.title}</a>`).join("")}</nav>
 <script>
   WIZ_global_data.SNlM0e = "xsrf-live";
   const url = (rpcid) => "/_/BardChatUi/data/batchexecute?rpcids=" + rpcid + "&rt=c";
@@ -192,15 +192,21 @@ function serveGemini(url: URL, body: string, headers: Record<string, string | st
   xhr.open("POST", url("MaZiqc"));
   xhr.responseType = "arraybuffer";
   for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
-  xhr.onload = () => {
-    document.getElementById("chats").innerHTML = "<a href='/app/aaaa1111bbbb2222'>chat</a>";
-  };
   xhr.send(body("MaZiqc", [35, null, [null, null, 1, null, null, null, null, null, null, 1]]));
 
-  const open = location.pathname.startsWith("/app/") ? location.pathname.split("/")[2] : null;
-  if (open) {
-    fetch(new Request(url("hNvQHb"), { method: "POST", headers, body: body("hNvQHb", ["c_" + open, 10, null, 1, [0], [4], null, 1]) }));
+  function read(id) {
+    fetch(new Request(url("hNvQHb"), { method: "POST", headers, body: body("hNvQHb", ["c_" + id, 10, null, 1, [0], [4], null, 1]) }));
   }
+  const open = location.pathname.startsWith("/app/") ? location.pathname.split("/")[2] : null;
+  if (open) read(open);
+  // Like the real app, the chat list opens chats in the page, without a reload.
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("a");
+    if (!link) return;
+    event.preventDefault();
+    history.pushState({}, "", link.getAttribute("href"));
+    read(link.getAttribute("href").split("/")[2]);
+  });
 </script>`,
   };
 }
@@ -255,9 +261,9 @@ test("visiting each site syncs its whole history automatically", async () => {
   await gemini.goto("https://gemini.google.com/app");
   const geminiStatus = await waitForStatus("gemini", (s) => typeof s.lastSuccessAt === "number");
   assert.deepEqual(geminiStatus.lastResult, { listed: 1, fetched: 1, failed: 0 });
-  // The user's tab lists 35; the sync tab's pages (the list, then the chat,
-  // which also lists on load) ask for 100.
-  assert.deepEqual(fakeSites.geminiPageSizes, [35, 100, 100, 100], "the sync tab asks for larger pages");
+  // The user's tab lists 35; the sync tab lists 100, then opens the chat from
+  // its list in the page and reads 100 turns.
+  assert.deepEqual(fakeSites.geminiPageSizes, [35, 100, 100], "the sync tab asks for larger pages");
   await gemini.waitForTimeout(500);
   assert.equal(context.pages().filter((p) => p.url().startsWith("https://gemini.google.com")).length, 1, "sync tab closed");
 
@@ -335,8 +341,8 @@ test("Gemini falls back to the page's own page sizes when larger ones are refuse
 
   const after = await waitForStatus("gemini", (s) => s.lastSuccessAt !== before.lastSuccessAt && !s.running);
   assert.deepEqual(after.lastResult, { listed: 2, fetched: 1, failed: 0 }, "only the new chat is read");
-  // Refused list of 100, then the plain list, then the chat page's list and read.
-  assert.deepEqual(fakeSites.geminiPageSizes, [100, 35, 35, 10], "retried with the page's defaults");
+  // Refused list of 100, then a fresh plain load lists 35 and opens the chat in the page.
+  assert.deepEqual(fakeSites.geminiPageSizes, [100, 35, 10], "retried with the page's defaults");
   assert.deepEqual(await resultTitles(popup, "陽明山"), ["週末去哪"]);
   await popup.close();
 });

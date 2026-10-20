@@ -55,9 +55,13 @@ chats are kept.
 
 **Gemini syncs differently.** Gemini only answers requests its own page
 makes, so Threadbase saves what the Gemini page loads: chats you open are
-saved as you read them, and a sync opens a background Gemini tab that visits
-each new or changed chat in turn (a few seconds per chat) and closes when
-done. Leave that tab alone while it works; closing it stops the sync.
+saved as you read them, and a sync opens a background Gemini tab that opens
+each new or changed chat in turn from Gemini's own chat list, a few seconds
+apart, and closes when done. Leave that tab alone while it works; closing it
+stops the sync. To stay at a person's pace, one sync reads at most 40 chats;
+the rest follow in later syncs. If Google asks you to confirm you're not a
+robot, the sync stops and brings that tab forward: finish the check, then
+press Sync to carry on where it left off.
 
 If the popup says **Sign in to …**, sign in on that site and press Sync again.
 

@@ -1,12 +1,14 @@
 import { patchStatus, serialized, updateStatus as update } from "./background-status.ts";
 import { knownUpdates, saveConversation } from "./db.ts";
 import {
+  WATCHDOG_ALARM,
   onGeminiCaptured,
   onGeminiListDone,
   onGeminiListed,
   onGeminiReady,
   onGeminiStepDone,
   onGeminiTabRemoved,
+  onGeminiWatchdog,
   startGeminiSync,
 } from "./gemini-backfill.ts";
 import { readStatus, type BackgroundRequest, type BackgroundResponse, type ContentRequest, type SyncBeginResponse } from "./messages.ts";
@@ -72,7 +74,7 @@ async function handle(request: BackgroundRequest, sender: chrome.runtime.Message
       await onGeminiListed(request.chats);
       return null;
     case "gemini-captured":
-      await onGeminiCaptured(request.conversation, request.complete);
+      await onGeminiCaptured(sender.tab?.id, request.conversation);
       return null;
     case "gemini-list-done":
       return onGeminiListDone(sender.tab?.id, request.enlargeFailed, request.diagnosis);
@@ -82,6 +84,9 @@ async function handle(request: BackgroundRequest, sender: chrome.runtime.Message
 }
 
 chrome.tabs.onRemoved.addListener((tabId) => void onGeminiTabRemoved(tabId));
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === WATCHDOG_ALARM) void onGeminiWatchdog();
+});
 
 /**
  * Queues a full sync and gets a tab of the site to run it: pokes an open tab,

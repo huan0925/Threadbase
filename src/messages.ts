@@ -16,8 +16,8 @@ export type BackgroundRequest =
   | { type: "gemini-ready"; signedIn: boolean }
   /** The page listed chats. */
   | { type: "gemini-listed"; chats: ConversationSummary[] }
-  /** The page read a chat; `complete` when read by the sync tab, which reads whole chats. */
-  | { type: "gemini-captured"; conversation: NormalizedConversation; complete: boolean }
+  /** The page read a chat. */
+  | { type: "gemini-captured"; conversation: NormalizedConversation }
   /** The sync tab finished listing chats. */
   | { type: "gemini-list-done"; enlargeFailed: boolean; diagnosis: string | null }
   /** The sync tab finished (or gave up) reading a chat. */
@@ -28,7 +28,8 @@ export type GeminiInstruction =
   | { action: "none" }
   | { action: "list"; scroll: boolean }
   | { action: "capture"; id: string }
-  | { action: "navigate"; url: string }
+  /** Open a chat (`id`) or the chat list (null): in the page when it links to it, else by loading `url`. */
+  | { action: "navigate"; url: string; id: string | null }
   | { action: "done" };
 
 /** Sent to a site's content script: run the sync the background has queued. */

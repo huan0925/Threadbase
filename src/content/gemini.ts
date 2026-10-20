@@ -30,8 +30,11 @@ const CHAT_TIMEOUT_MS = 25_000;
 const IDLE_SCROLLS = 3;
 const SCROLL_PAUSE_MS = 2000;
 const SCROLL_LIMIT_MS = 3 * 60_000;
+/** Pause before opening the next chat, so a sync reads at a person's pace. */
+const STEP_PAUSE_MS = 3000;
 
-const inSyncTab = new URLSearchParams(location.search).has(SYNC_TAB_PARAM);
+/** The sync tab's mode ("enlarge" or "plain") this page was loaded with, if it's the sync tab. */
+const loadedMode = new URLSearchParams(location.search).get(SYNC_TAB_PARAM);
 const readChats = new Set<string>();
 let listedAt = 0;
 let enlargeFailed = false;
@@ -62,7 +65,7 @@ function onCaptured(call: CapturedCall): void {
     if (typeof id !== "string") continue;
     const conversation = normalizeGeminiConversation(id, "", turns);
     if (conversation.messages.length === 0) continue;
-    void sendToBackground({ type: "gemini-captured", conversation, complete: inSyncTab })
+    void sendToBackground({ type: "gemini-captured", conversation })
       .then(() => readChats.add(id))
       .catch(() => {});
   }
@@ -112,6 +115,21 @@ async function scrollChatList(): Promise<void> {
   }
 }
 
+/** The page's own link to a chat, if its chat list shows it. */
+function chatLink(id: string): HTMLAnchorElement | null {
+  const path = `/app/${id.replace(/^c_/, "")}`;
+  return [...document.querySelectorAll<HTMLAnchorElement>('a[href*="/app/"]')].find(
+    (link) => new URL(link.href, location.href).pathname === path,
+  ) ?? null;
+}
+
+async function capture(id: string): Promise<void> {
+  await waitFor(() => readChats.has(id) || enlargeFailed, CHAT_TIMEOUT_MS);
+  return follow(
+    await sendToBackground<GeminiInstruction>({ type: "gemini-step-done", id, ok: readChats.has(id), enlargeFailed }),
+  );
+}
+
 function scrollableAncestor(element: HTMLElement): HTMLElement | null {
   for (let node = element.parentElement; node; node = node.parentElement) {
     const { overflowY } = getComputedStyle(node);
@@ -132,16 +150,22 @@ async function follow(instruction: GeminiInstruction): Promise<void> {
           diagnosis: listedAt > 0 ? null : diagnosis(),
         }),
       );
-    case "capture": {
-      const { id } = instruction;
-      await waitFor(() => readChats.has(id) || enlargeFailed, CHAT_TIMEOUT_MS);
-      return follow(
-        await sendToBackground<GeminiInstruction>({ type: "gemini-step-done", id, ok: readChats.has(id), enlargeFailed }),
-      );
-    }
-    case "navigate":
+    case "capture":
+      return capture(instruction.id);
+    case "navigate": {
+      await sleep(STEP_PAUSE_MS);
+      // Opening the chat from the page's own chat list loads just that chat,
+      // like a person clicking it; a full page load costs dozens of requests.
+      // A different mode (enlarging turned off) only takes effect on a fresh load.
+      const sameMode = new URL(instruction.url).searchParams.get(SYNC_TAB_PARAM) === loadedMode;
+      const link = instruction.id && sameMode ? chatLink(instruction.id) : null;
+      if (link && instruction.id) {
+        link.click();
+        return capture(instruction.id);
+      }
       location.assign(instruction.url);
       return;
+    }
     case "none":
     case "done":
       return;

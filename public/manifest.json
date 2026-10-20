@@ -39,5 +39,5 @@
     }
   ],
   "host_permissions": ["https://chatgpt.com/*", "https://claude.ai/*", "https://gemini.google.com/*"],
-  "permissions": ["storage", "unlimitedStorage"]
+  "permissions": ["storage", "unlimitedStorage", "alarms"]
 }
