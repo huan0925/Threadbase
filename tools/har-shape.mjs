@@ -102,6 +102,9 @@ function maskPath(pathname) {
     .join("/");
 }
 
+/** batchexecute calls kept for the page-vs-extension comparison at the end. */
+const batchCalls = [];
+
 let printed = 0;
 for (const entry of har.log?.entries ?? []) {
   const { request, response } = entry;
@@ -125,6 +128,17 @@ for (const entry of har.log?.entries ?? []) {
 
   if (isBatch) {
     const form = new URLSearchParams(request.postData?.text ?? "");
+    batchCalls.push({
+      rpcids: url.searchParams.get("rpcids") ?? "",
+      fromExtension,
+      fields: new Map([
+        ...[...url.searchParams].map(([key, value]) => [`query ${key}`, value]),
+        ...(request.headers ?? [])
+          .filter(({ name }) => !name.startsWith(":"))
+          .map(({ name, value }) => [`header ${name.toLowerCase()}`, value]),
+        ...[...form].map(([key, value]) => [`form ${key}`, value]),
+      ]),
+    });
     console.log(`form fields: ${[...form.keys()].join(" ")}`);
     const freq = form.get("f.req");
     if (freq) {
@@ -148,3 +162,45 @@ for (const entry of har.log?.entries ?? []) {
   }
 }
 if (printed === 0) console.error("No JSON or batchexecute requests found in this HAR file.");
+
+/** Positions (like [8][2]) where two JSON values differ; never the values themselves. */
+function differingPaths(a, b, path = "") {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    const paths = [];
+    for (let i = 0; i < Math.max(a.length, b.length); i++) paths.push(...differingPaths(a[i], b[i], `${path}[${i}]`));
+    return paths;
+  }
+  return JSON.stringify(a) === JSON.stringify(b) ? [] : [path || "(whole value)"];
+}
+
+function compareValues(a, b) {
+  if (a === undefined) return "only in the second";
+  if (b === undefined) return "only in the first";
+  if (a === b) return "same";
+  try {
+    const paths = differingPaths(JSON.parse(a), JSON.parse(b));
+    return `different at ${paths.slice(0, 8).join(" ")}${paths.length > 8 ? " …" : ""}`;
+  } catch {
+    return `different (length ${a.length} vs ${b.length})`;
+  }
+}
+
+function compareCalls(label, first, second) {
+  console.log(`\n### ${label}`);
+  for (const key of new Set([...first.fields.keys(), ...second.fields.keys()])) {
+    console.log(`${key}: ${compareValues(first.fields.get(key), second.fields.get(key))}`);
+  }
+}
+
+// Same-or-different only, so values never appear in the output.
+const extensionCall = batchCalls.find((call) => call.fromExtension);
+if (extensionCall) {
+  const pageCall =
+    batchCalls.find((call) => !call.fromExtension && call.rpcids === extensionCall.rpcids) ??
+    batchCalls.find((call) => !call.fromExtension);
+  if (pageCall) compareCalls(`page ${pageCall.rpcids} vs extension ${extensionCall.rpcids}`, pageCall, extensionCall);
+}
+const [pageFirst, pageSecond] = batchCalls.filter((call) => !call.fromExtension);
+if (pageFirst && pageSecond) {
+  compareCalls(`page ${pageFirst.rpcids} vs the page's next call, ${pageSecond.rpcids}`, pageFirst, pageSecond);
+}
