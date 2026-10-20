@@ -120,7 +120,12 @@ export function onGeminiCaptured(conversation: NormalizedConversation, complete:
   });
 }
 
-export function onGeminiListDone(tabId: number | undefined, enlargeFailed: boolean): Promise<GeminiInstruction> {
+/** `diagnosis` explains, when no chats were listed, what the page did instead. */
+export function onGeminiListDone(
+  tabId: number | undefined,
+  enlargeFailed: boolean,
+  diagnosis: string | null,
+): Promise<GeminiInstruction> {
   return serialized(async () => {
     const state = await readState();
     if (!state || state.tabId !== tabId) return { action: "none" };
@@ -129,6 +134,9 @@ export function onGeminiListDone(tabId: number | undefined, enlargeFailed: boole
       return { action: "navigate", url: geminiSyncUrl(null, false) };
     }
     const index = await readIndex();
+    if (diagnosis !== null && Object.keys(index).length === 0) {
+      return finish(state, `Couldn't read Gemini's chat list (${diagnosis})`);
+    }
     const queue = geminiQueue(index, new Map(await knownUpdates("gemini")));
     const next: SyncTabState = { ...state, phase: "fetch", queue, index: 0, listed: Object.keys(index).length };
     await writeState(next);

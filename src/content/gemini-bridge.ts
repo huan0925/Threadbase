@@ -5,12 +5,27 @@
 
 export const BRIDGE_SOURCE = "threadbase-gemini";
 
+/** <html> attribute where gemini-page.ts publishes what it has seen, for diagnosing syncs. */
+export const PAGE_STATS_ATTRIBUTE = "data-threadbase-gemini";
+
+/** What gemini-page.ts has seen of the page's calls. */
+export interface PageStats {
+  /** batchexecute calls the page made. */
+  batchCalls: number;
+  /** Of those, calls that list or read chats. */
+  chatCalls: number;
+  /** Chat calls whose response was read and posted. */
+  captured: number;
+  /** The last problem reading a response, if any. */
+  lastError: string;
+}
+
 /** The page's own batchexecute call for chats (list or read) and its response. */
 export interface CapturedCall {
   source: typeof BRIDGE_SOURCE;
   type: "captured";
-  /** The request body as sent (form-encoded, with f.req). */
-  body: string;
+  /** RPC ids in the call, from the URL's `rpcids` parameter. */
+  rpcids: string[];
   /** The raw batchexecute response. */
   text: string;
   /** Whether Threadbase enlarged the page's page sizes in this call. */

@@ -181,20 +181,26 @@ function serveGemini(url: URL, body: string, headers: Record<string, string | st
 <nav id="chats"></nav>
 <script>
   WIZ_global_data.SNlM0e = "xsrf-live";
-  function call(rpcid, args, onload) {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/_/BardChatUi/data/batchexecute?rpcids=" + rpcid + "&rt=c");
-    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded;charset=utf-8");
-    xhr.setRequestHeader("x-built-by-page", "1");
-    xhr.onload = () => onload && onload(xhr.responseText);
-    xhr.send("f.req=" + encodeURIComponent(JSON.stringify([[[rpcid, JSON.stringify(args), null, "generic"]]])) +
-      "&at=" + encodeURIComponent(WIZ_global_data.SNlM0e));
-  }
-  call("MaZiqc", [35, null, [null, null, 1, null, null, null, null, null, null, 1]], () => {
+  const url = (rpcid) => "/_/BardChatUi/data/batchexecute?rpcids=" + rpcid + "&rt=c";
+  const body = (rpcid, args) =>
+    "f.req=" + encodeURIComponent(JSON.stringify([[[rpcid, JSON.stringify(args), null, "generic"]]])) +
+    "&at=" + encodeURIComponent(WIZ_global_data.SNlM0e);
+  const headers = { "Content-Type": "application/x-www-form-urlencoded;charset=utf-8", "x-built-by-page": "1" };
+
+  // The two calls use different transports, as a real page's might.
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", url("MaZiqc"));
+  xhr.responseType = "arraybuffer";
+  for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
+  xhr.onload = () => {
     document.getElementById("chats").innerHTML = "<a href='/app/aaaa1111bbbb2222'>chat</a>";
-  });
+  };
+  xhr.send(body("MaZiqc", [35, null, [null, null, 1, null, null, null, null, null, null, 1]]));
+
   const open = location.pathname.startsWith("/app/") ? location.pathname.split("/")[2] : null;
-  if (open) call("hNvQHb", ["c_" + open, 10, null, 1, [0], [4], null, 1]);
+  if (open) {
+    fetch(new Request(url("hNvQHb"), { method: "POST", headers, body: body("hNvQHb", ["c_" + open, 10, null, 1, [0], [4], null, 1]) }));
+  }
 </script>`,
   };
 }

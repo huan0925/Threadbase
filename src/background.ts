@@ -75,7 +75,7 @@ async function handle(request: BackgroundRequest, sender: chrome.runtime.Message
       await onGeminiCaptured(request.conversation, request.complete);
       return null;
     case "gemini-list-done":
-      return onGeminiListDone(sender.tab?.id, request.enlargeFailed);
+      return onGeminiListDone(sender.tab?.id, request.enlargeFailed, request.diagnosis);
     case "gemini-step-done":
       return onGeminiStepDone(sender.tab?.id, request.id, request.ok, request.enlargeFailed);
   }

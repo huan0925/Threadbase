@@ -19,7 +19,7 @@ export type BackgroundRequest =
   /** The page read a chat; `complete` when read by the sync tab, which reads whole chats. */
   | { type: "gemini-captured"; conversation: NormalizedConversation; complete: boolean }
   /** The sync tab finished listing chats. */
-  | { type: "gemini-list-done"; enlargeFailed: boolean }
+  | { type: "gemini-list-done"; enlargeFailed: boolean; diagnosis: string | null }
   /** The sync tab finished (or gave up) reading a chat. */
   | { type: "gemini-step-done"; id: string; ok: boolean; enlargeFailed: boolean };
 

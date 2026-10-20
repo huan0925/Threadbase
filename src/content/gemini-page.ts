@@ -8,35 +8,81 @@
  *
  * In a tab Threadbase opened to sync (marked ?threadbase=enlarge), it also
  * raises those calls' page sizes so each page load returns more.
+ *
+ * The page's transport isn't documented, so calls are recognized by URL
+ * (rpcids), and both XMLHttpRequest and fetch are watched, whatever the body
+ * and response types.
  */
 
-import { argsByRpc, enlargePageSizes, RPC_LIST_CHATS, RPC_READ_CHAT, SYNC_TAB_PARAM } from "../providers/gemini.ts";
-import { BRIDGE_SOURCE, isBridgeMessage, type CapturedCall, type ReplayRequest } from "./gemini-bridge.ts";
+import { enlargePageSizes, RPC_LIST_CHATS, RPC_READ_CHAT, SYNC_TAB_PARAM } from "../providers/gemini.ts";
+import {
+  BRIDGE_SOURCE,
+  isBridgeMessage,
+  PAGE_STATS_ATTRIBUTE,
+  type CapturedCall,
+  type PageStats,
+  type ReplayRequest,
+} from "./gemini-bridge.ts";
 
 const ENLARGE = new URLSearchParams(location.search).get(SYNC_TAB_PARAM) === "enlarge";
 /** Calls captured so far, re-posted on request in case the content script loaded later. */
 const captured: CapturedCall[] = [];
+const stats: PageStats = { batchCalls: 0, chatCalls: 0, captured: 0, lastError: "" };
 
-const isChatCall = (url: URL, body: string) =>
-  url.origin === location.origin &&
-  url.pathname.endsWith("/batchexecute") &&
-  [...argsByRpc(body).keys()].some((rpcid) => rpcid === RPC_LIST_CHATS || rpcid === RPC_READ_CHAT);
+function noteStats(): void {
+  document.documentElement?.setAttribute(PAGE_STATS_ATTRIBUTE, JSON.stringify(stats));
+}
 
-function publish(body: string, text: string, enlarged: boolean): void {
-  const call: CapturedCall = { source: BRIDGE_SOURCE, type: "captured", body, text, enlarged };
+/** The chat RPCs in a batchexecute URL, or null for any other request. */
+function chatRpcs(url: URL): string[] | null {
+  if (url.origin !== location.origin || !url.pathname.endsWith("/batchexecute")) return null;
+  stats.batchCalls++;
+  const rpcids = (url.searchParams.get("rpcids") ?? "").split(",").filter(Boolean);
+  if (!rpcids.some((rpcid) => rpcid === RPC_LIST_CHATS || rpcid === RPC_READ_CHAT)) {
+    noteStats();
+    return null;
+  }
+  stats.chatCalls++;
+  noteStats();
+  return rpcids;
+}
+
+function publish(rpcids: string[], text: string, enlarged: boolean): void {
+  const call: CapturedCall = { source: BRIDGE_SOURCE, type: "captured", rpcids, text, enlarged };
   captured.push(call);
   if (captured.length > 50) captured.shift();
+  stats.captured++;
+  noteStats();
   window.postMessage(call, location.origin);
 }
 
-/** The body to send: enlarged in a sync tab, otherwise as the page built it. */
-function prepare(body: string): { body: string; enlarged: boolean } {
-  const enlarged = ENLARGE ? enlargePageSizes(body) : null;
-  return enlarged ? { body: enlarged, enlarged: true } : { body, enlarged: false };
+function fail(error: unknown): void {
+  stats.lastError = error instanceof Error ? error.message : String(error);
+  noteStats();
 }
 
-const bodyText = (body: unknown) =>
-  typeof body === "string" ? body : body instanceof URLSearchParams ? body.toString() : null;
+/** The enlarged body for a sync tab, or null to send the page's body unchanged. */
+function enlarge(body: unknown): string | null {
+  if (!ENLARGE) return null;
+  const text = typeof body === "string" ? body : body instanceof URLSearchParams ? body.toString() : null;
+  return text === null ? null : enlargePageSizes(text);
+}
+
+async function xhrText(xhr: XMLHttpRequest): Promise<string> {
+  switch (xhr.responseType) {
+    case "":
+    case "text":
+      return xhr.responseText;
+    case "arraybuffer":
+      return new TextDecoder().decode(xhr.response as ArrayBuffer);
+    case "blob":
+      return (xhr.response as Blob).text();
+    case "json":
+      return JSON.stringify(xhr.response);
+    default:
+      throw new Error(`unreadable response type "${xhr.responseType}"`);
+  }
+}
 
 const requestUrls = new WeakMap<XMLHttpRequest, URL>();
 const { open, send } = XMLHttpRequest.prototype;
@@ -48,24 +94,43 @@ XMLHttpRequest.prototype.open = function (this: XMLHttpRequest, method: string, 
 
 XMLHttpRequest.prototype.send = function (this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null) {
   const url = requestUrls.get(this);
-  const text = bodyText(body);
-  if (!url || text === null || !isChatCall(url, text)) return send.call(this, body);
-  const prepared = prepare(text);
-  this.addEventListener("load", () => publish(prepared.body, this.responseText, prepared.enlarged));
-  return send.call(this, prepared.body);
+  const rpcids = url ? chatRpcs(url) : null;
+  if (!rpcids) return send.call(this, body);
+  const enlarged = enlarge(body);
+  this.addEventListener("loadend", () => {
+    if (this.status !== 200) return fail(`HTTP ${this.status}`);
+    xhrText(this).then((text) => publish(rpcids, text, enlarged !== null), fail);
+  });
+  return send.call(this, enlarged ?? body);
 };
 
 const pageFetch = window.fetch;
 window.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
   const url = new URL(input instanceof Request ? input.url : String(input), location.href);
-  const text = bodyText(init?.body);
-  if (input instanceof Request || text === null || !isChatCall(url, text)) return pageFetch.call(this, input, init);
-  const prepared = prepare(text);
-  const response = await pageFetch.call(this, input, { ...init, body: prepared.body });
+  const rpcids = chatRpcs(url);
+  if (!rpcids) return pageFetch.call(this, input, init);
+
+  let enlarged: string | null = null;
+  try {
+    enlarged = enlarge(init?.body ?? (input instanceof Request ? await input.clone().text() : null));
+  } catch (error) {
+    fail(error);
+  }
+  let request = input;
+  let options = init;
+  if (enlarged !== null) {
+    if (input instanceof Request) request = new Request(input, { body: enlarged });
+    else options = { ...init, body: enlarged };
+  }
+  const response = await pageFetch.call(this, request, options);
+  if (!response.ok) {
+    fail(`HTTP ${response.status}`);
+    return response;
+  }
   response
     .clone()
     .text()
-    .then((responseText) => publish(prepared.body, responseText, prepared.enlarged), () => {});
+    .then((text) => publish(rpcids, text, enlarged !== null), fail);
   return response;
 };
 
