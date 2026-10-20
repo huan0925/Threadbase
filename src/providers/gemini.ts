@@ -1,11 +1,18 @@
-import type { ConversationSummary, ProviderClient } from "../sync.ts";
+import type { ConversationSummary } from "../sync.ts";
 import type { NormalizedConversation, NormalizedMessage } from "../types.ts";
-import { fetchWithRetry, NotLoggedInError, type FetchLike } from "./http.ts";
 
 /**
- * Gemini, read through the same Google "batchexecute" RPCs gemini.google.com's
- * own UI uses. Responses are positional JSON arrays rather than objects; the
- * positions below were mapped from recordings of the live site (made with
+ * Gemini, read from the responses to the page's own "batchexecute" calls.
+ *
+ * Unlike ChatGPT and Claude, Threadbase doesn't call Gemini's API itself:
+ * Gemini rejects calls that its own page scripts didn't build (status 13,
+ * BardErrorInfo 1096), even sent from the page with the page's headers. So
+ * src/content/gemini-page.ts watches the page's own calls and hands their
+ * responses to the content script, and syncing works by having a Gemini tab
+ * open each conversation (see src/gemini-backfill.ts).
+ *
+ * Responses are positional JSON arrays rather than objects; the positions
+ * below were mapped from recordings of the live site (made with
  * tools/har-shape.mjs) and match those used by the maintained open-source
  * client github.com/HanaokaYuzu/Gemini-API. Check them first if syncing breaks.
  */
@@ -13,154 +20,88 @@ import { fetchWithRetry, NotLoggedInError, type FetchLike } from "./http.ts";
 export const GEMINI_ORIGIN = "https://gemini.google.com";
 
 /** RPC ids, as named in the batchexecute URL's `rpcids` parameter. */
-const RPC_LIST_CHATS = "MaZiqc";
-const RPC_READ_CHAT = "hNvQHb";
-
-const LIST_PAGE_SIZE = 35;
-/** MaZiqc filters: pinned chats, then all the others. */
-const LIST_FILTERS = [
-  [1, null, 1],
-  [0, null, 1],
-];
-const TURNS_PAGE_SIZE = 100;
-/** Guards against a pagination token that never runs out. */
-const MAX_PAGES = 500;
+export const RPC_LIST_CHATS = "MaZiqc";
+export const RPC_READ_CHAT = "hNvQHb";
 
 /**
- * Default x-goog-ext-525001261-jspb: a fixed feature list followed by a
- * per-client session UUID. In the extension, gemini-page.ts replaces it with
- * the page's own header (which also carries a session block), since the live
- * site rejects calls with this one alone (status 13, BardErrorInfo 1096).
+ * In the sync tab, the page's own list and read calls ask for this many chats
+ * or turns instead of the page's defaults (35 and 10), so one page load gets
+ * more. If Gemini rejects the enlarged calls, syncing falls back to the defaults.
  */
-const EXTENSION_HEADER_PREFIX = [1, null, null, null, null, null, null, null, [4, 5, 6, 8], null, null, null, null, null, null, null];
+const ENLARGED_PAGE_SIZE = 100;
 
-/** Response header the content script adds to say how many page headers a call reused. */
-export const PAGE_HEADERS_USED = "x-threadbase-page-headers";
-
-/** Page-embedded values every batchexecute call needs. */
-interface SessionTokens {
-  /** XSRF token, sent as the `at` form field ("SNlM0e" in WIZ_global_data). */
-  at: string;
-  /** Server build label, the `bl` query parameter ("cfb2h"). */
-  bl: string | null;
-  /** Session id, the `f.sid` query parameter ("FdrFJe"). */
-  sid: string | null;
-}
-
-/** What the content script can read from the Gemini page it runs in. */
-export interface GeminiPage {
-  /** Text of the page's inline scripts, which hold WIZ_global_data. */
-  scripts(): string;
-  /** UI language, sent as `hl`. */
-  language(): string | null;
-}
+/** Query parameter marking a tab Threadbase opened to sync; its value says whether to enlarge. */
+export const SYNC_TAB_PARAM = "threadbase";
 
 type Json = unknown;
 /** One conversation turn from hNvQHb: a prompt, its reply candidates, a timestamp. */
 type Turn = Json[];
 
-export function createGeminiClient(fetch: FetchLike, page?: GeminiPage, origin = GEMINI_ORIGIN): ProviderClient {
-  let tokens: Promise<SessionTokens> | undefined;
-  let requestId = Math.floor(Math.random() * 90_000) + 10_000;
-  const extensionHeader = JSON.stringify([...EXTENSION_HEADER_PREFIX, crypto.randomUUID().toUpperCase()]);
-  /** Conversation id → title, filled while listing (the chat itself doesn't carry one). */
-  const titles = new Map<string, string>();
+/** The page URL of a conversation, or of the app when no id is given, marked for the sync tab. */
+export function geminiSyncUrl(id: string | null, enlarge: boolean): string {
+  const path = id ? `/app/${id.replace(/^c_/, "")}` : "/app";
+  return `${GEMINI_ORIGIN}${path}?${SYNC_TAB_PARAM}=${enlarge ? "enlarge" : "plain"}`;
+}
 
-  const call = async (rpcid: string, args: Json[]): Promise<Json> => {
-    tokens ??= sessionTokens(fetch, origin, page);
-    const { at, bl, sid } = await tokens;
-    const query = new URLSearchParams({ rpcids: rpcid, "source-path": "/app" });
-    if (bl) query.set("bl", bl);
-    if (sid) query.set("f.sid", sid);
-    query.set("hl", page?.language() || "en");
-    query.set("_reqid", String((requestId += 100_000)));
-    query.set("rt", "c");
-    const body = new URLSearchParams({
-      "f.req": JSON.stringify([[[rpcid, JSON.stringify(args), null, "generic"]]]),
-      at,
-    });
-    const response = await fetchWithRetry(
-      `${origin}/_/BardChatUi/data/batchexecute?${query}`,
-      { method: "POST", body },
-      {
-        fetch,
-        site: "Gemini",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
-          "X-Same-Domain": "1",
-          "x-goog-ext-525001261-jspb": extensionHeader,
-          "x-goog-ext-73010989-jspb": "[0]",
-        },
-      },
-    );
-    try {
-      return parseBatchResponse(await response.text(), rpcid);
-    } catch (error) {
-      const reused = response.headers.get(PAGE_HEADERS_USED);
-      if (reused !== null && error instanceof Error) error.message += `; reused ${reused} page headers`;
-      throw error;
+/** The arguments of each RPC in a batchexecute request body (form-encoded f.req). */
+export function argsByRpc(body: string): Map<string, Json[]> {
+  const calls = new Map<string, Json[]>();
+  try {
+    const freq = JSON.parse(new URLSearchParams(body).get("f.req") ?? "null") as Json;
+    for (const call of arrayAt(freq, 0)) {
+      const [rpcid, args] = call as [unknown, unknown];
+      if (typeof rpcid === "string" && typeof args === "string") calls.set(rpcid, JSON.parse(args));
     }
-  };
-
-  return {
-    source: "gemini",
-
-    async *listConversations(): AsyncIterable<ConversationSummary> {
-      const seen = new Set<string>();
-      for (const filter of LIST_FILTERS) {
-        let token: string | null = null;
-        for (let page = 0; page < MAX_PAGES; page++) {
-          const payload = await call(RPC_LIST_CHATS, [LIST_PAGE_SIZE, token, filter]);
-          const chats = arrayAt(payload, 2);
-          for (const chat of chats) {
-            const summary = toSummary(chat);
-            if (!summary || seen.has(summary.id)) continue;
-            seen.add(summary.id);
-            titles.set(summary.id, summary.title);
-            yield summary;
-          }
-          const next = at(payload, 1);
-          if (typeof next !== "string" || next === token || chats.length === 0) break;
-          token = next;
-        }
-      }
-    },
-
-    async getConversation(id) {
-      const turns = new Map<string, Turn>();
-      let token: string | null = null;
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const payload = await call(RPC_READ_CHAT, [id, TURNS_PAGE_SIZE, token, 1, [1], [4], null, 1]);
-        // Keyed by response id, so a page served twice can't duplicate turns.
-        for (const turn of arrayAt(payload, 0) as Turn[]) turns.set(String(at(turn, 0, 1) ?? turns.size), turn);
-        const next = at(payload, 1);
-        if (typeof next !== "string" || next === token) break;
-        token = next;
-      }
-      return normalizeGeminiConversation(id, titles.get(id) ?? "", [...turns.values()]);
-    },
-  };
+  } catch {
+    // Not a batchexecute body Threadbase understands; leave it alone.
+  }
+  return calls;
 }
 
 /**
- * Reads the batchexecute tokens the page's own scripts use: from the open
- * page when possible, so requests belong to the same page session, else
- * from a freshly fetched app page.
+ * Raises the page sizes in the page's own list (MaZiqc: [count, token, filter])
+ * and read (hNvQHb: [id, turns, token, …]) calls. Returns null when the body
+ * has neither, so callers send it unchanged.
  */
-async function sessionTokens(fetch: FetchLike, origin: string, page: GeminiPage | undefined): Promise<SessionTokens> {
-  const fromPage = page ? readTokens(page.scripts()) : null;
-  if (fromPage) return fromPage;
-  const html = await (await fetchWithRetry(`${origin}/app`, {}, { fetch, site: "Gemini" })).text();
-  // Signed-out visitors get the landing page, which has no XSRF token.
-  const fetched = readTokens(html);
-  if (!fetched) throw new NotLoggedInError("Gemini");
-  return fetched;
+export function enlargePageSizes(body: string): string | null {
+  const form = new URLSearchParams(body);
+  let freq: Json;
+  try {
+    freq = JSON.parse(form.get("f.req") ?? "null");
+  } catch {
+    return null;
+  }
+  let changed = false;
+  for (const call of arrayAt(freq, 0)) {
+    if (!Array.isArray(call) || typeof call[1] !== "string") continue;
+    const sizeIndex = call[0] === RPC_LIST_CHATS ? 0 : call[0] === RPC_READ_CHAT ? 1 : -1;
+    if (sizeIndex === -1) continue;
+    const args = JSON.parse(call[1]) as Json[];
+    if (typeof args[sizeIndex] !== "number" || (args[sizeIndex] as number) >= ENLARGED_PAGE_SIZE) continue;
+    args[sizeIndex] = ENLARGED_PAGE_SIZE;
+    call[1] = JSON.stringify(args);
+    changed = true;
+  }
+  if (!changed) return null;
+  form.set("f.req", JSON.stringify(freq));
+  return form.toString();
 }
 
-export function readTokens(html: string): SessionTokens | null {
-  const value = (key: string) => html.match(new RegExp(`"${key}":\\s*"([^"]*)"`))?.[1] ?? null;
-  const at = value("SNlM0e");
-  return at ? { at, bl: value("cfb2h"), sid: value("FdrFJe") } : null;
+/** Chats in a MaZiqc payload: [_, nextPageToken, [chat, …]]. */
+export function listChats(payload: Json): ConversationSummary[] {
+  return arrayAt(payload, 2)
+    .map(toSummary)
+    .filter((summary): summary is ConversationSummary => summary !== null);
+}
+
+/** Turns in an hNvQHb payload: [[turn, …], nextPageToken, …]. */
+export function chatTurns(payload: Json): Turn[] {
+  return arrayAt(payload, 0) as Turn[];
+}
+
+/** Whether the page is signed in: its WIZ_global_data has an XSRF token ("SNlM0e"). */
+export function isSignedIn(html: string): boolean {
+  return /"SNlM0e":\s*"[^"]+"/.test(html);
 }
 
 /**
@@ -191,9 +132,10 @@ export function parseBatchResponse(text: string, rpcid: string): Json {
   throw new Error(`Gemini's response had no result for ${rpcid}`);
 }
 
-function toSummary(chat: Json): ConversationSummary | null {
+export function toSummary(chat: Json): ConversationSummary | null {
   const id = at(chat, 0);
-  if (typeof id !== "string") return null;
+  // A chat record has many fields; anything shorter isn't one.
+  if (!Array.isArray(chat) || chat.length < 2 || typeof id !== "string") return null;
   const title = at(chat, 1);
   return {
     id,

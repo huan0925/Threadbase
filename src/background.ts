@@ -1,13 +1,15 @@
+import { patchStatus, serialized, updateStatus as update } from "./background-status.ts";
 import { knownUpdates, saveConversation } from "./db.ts";
 import {
-  readStatus,
-  writeStatus,
-  type BackgroundRequest,
-  type BackgroundResponse,
-  type ContentRequest,
-  type SyncBeginResponse,
-  type SyncStatus,
-} from "./messages.ts";
+  onGeminiCaptured,
+  onGeminiListDone,
+  onGeminiListed,
+  onGeminiReady,
+  onGeminiStepDone,
+  onGeminiTabRemoved,
+  startGeminiSync,
+} from "./gemini-backfill.ts";
+import { readStatus, type BackgroundRequest, type BackgroundResponse, type ContentRequest, type SyncBeginResponse } from "./messages.ts";
 import { CHATGPT_ORIGIN } from "./providers/chatgpt.ts";
 import { CLAUDE_ORIGIN } from "./providers/claude.ts";
 import { GEMINI_ORIGIN } from "./providers/gemini.ts";
@@ -33,7 +35,7 @@ async function handle(request: BackgroundRequest, sender: chrome.runtime.Message
       return serialized(async (): Promise<SyncBeginResponse> => {
         const mode = decideSyncMode(await readStatus(request.source), Date.now());
         if (mode) {
-          await writeStatus(request.source, {
+          await patchStatus(request.source, {
             running: true,
             heartbeatAt: Date.now(),
             done: 0,
@@ -62,10 +64,24 @@ async function handle(request: BackgroundRequest, sender: chrome.runtime.Message
       if (sender.tab?.id !== undefined) await finishOpenedTab(sender.tab.id, request.error);
       return null;
     case "start-sync":
-      await startSync(request.source);
+      await (request.source === "gemini" ? startGeminiSync() : startSync(request.source));
       return null;
+    case "gemini-ready":
+      return onGeminiReady(sender.tab?.id, request.signedIn);
+    case "gemini-listed":
+      await onGeminiListed(request.chats);
+      return null;
+    case "gemini-captured":
+      await onGeminiCaptured(request.conversation, request.complete);
+      return null;
+    case "gemini-list-done":
+      return onGeminiListDone(sender.tab?.id, request.enlargeFailed);
+    case "gemini-step-done":
+      return onGeminiStepDone(sender.tab?.id, request.id, request.ok, request.enlargeFailed);
   }
 }
+
+chrome.tabs.onRemoved.addListener((tabId) => void onGeminiTabRemoved(tabId));
 
 /**
  * Queues a full sync and gets a tab of the site to run it: pokes an open tab,
@@ -102,23 +118,4 @@ async function finishOpenedTab(tabId: number, error: string | undefined): Promis
 
 async function openedTabs(): Promise<number[]> {
   return ((await chrome.storage.session.get(OPENED_TABS_KEY))[OPENED_TABS_KEY] as number[] | undefined) ?? [];
-}
-
-// Status updates are read-modify-write; run them one at a time so concurrent
-// messages (progress, sync-end, sync-begin) can't overwrite each other.
-let queue: Promise<unknown> = Promise.resolve();
-
-function serialized<T>(fn: () => Promise<T>): Promise<T> {
-  const next = queue.then(fn, fn);
-  queue = next.catch(() => {});
-  return next;
-}
-
-function update(
-  source: SourceId,
-  patch: Partial<SyncStatus> | ((status: SyncStatus) => Partial<SyncStatus>),
-): Promise<SyncStatus> {
-  return serialized(async () =>
-    writeStatus(source, typeof patch === "function" ? patch(await readStatus(source)) : patch),
-  );
 }

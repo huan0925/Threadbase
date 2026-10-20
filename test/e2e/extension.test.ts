@@ -29,6 +29,10 @@ const fakeSites = {
   chatgptLoggedIn: true,
   claudeLoggedIn: true,
   chatgpt: [...chatgptConversations],
+  /** Page sizes the Gemini page's list and read calls asked for, in order. */
+  geminiPageSizes: [] as number[],
+  /** Makes Gemini refuse page sizes above the page's defaults. */
+  geminiRejectEnlarged: false,
 };
 
 let server: Server;
@@ -80,6 +84,13 @@ before(async () => {
   });
   worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
   extensionId = new URL(worker.url()).host;
+  // DEBUG_E2E=1 prints page console output and page errors.
+  if (process.env.DEBUG_E2E) {
+    context.on("page", (page) => {
+      page.on("console", (message) => console.log(`[${page.url()}] ${message.text()}`));
+      page.on("pageerror", (error) => console.log(`[${page.url()}] error: ${error.message}`));
+    });
+  }
 });
 
 after(async () => {
@@ -129,65 +140,61 @@ function serveClaude(url: URL): Reply {
 }
 
 /**
- * Like the real page, the fake page's own scripts build an extension header
- * holding a session block Threadbase can't produce, plus the time of each call.
+ * The fake Gemini behaves like the real one where it matters to Threadbase:
+ * the page's own scripts list chats (MaZiqc) on load and read the open chat
+ * (hNvQHb), and the server answers only calls the page built (a stand-in
+ * header added by the page's code).
  */
-const GEMINI_SESSION = `SESSION-${Math.random().toString(36).slice(2)}`;
-
-/** Accepts only the page's header: its session block and a timestamp under 1.5 s old. */
-function validGeminiHeader(value: string | string[] | undefined): boolean {
-  try {
-    const header = JSON.parse(String(value)) as unknown[];
-    const [[seconds, nanos]] = header[19] as [[number, number]];
-    return header[16] === GEMINI_SESSION && Date.now() - (seconds * 1000 + nanos / 1e6) < 1500;
-  } catch {
-    return false;
-  }
+function geminiTurn(id: string, turn: string, prompt: string, reply: string, seconds: number) {
+  return [[id, `r_${turn}`], null, [[prompt]], [[[`rc_${turn}`, [reply]]]], [seconds, 0]];
 }
+
+const geminiChats: { id: string; title: string; updatedAt: [number, number]; payload: unknown }[] = [
+  { id: "c_aaaa1111bbbb2222", title: "報稅文件", updatedAt: [1792301486, 535038000], payload: geminiChat },
+];
 
 function serveGemini(url: URL, body: string, headers: Record<string, string | string[] | undefined>): Reply {
   if (url.pathname === "/_/BardChatUi/data/batchexecute") {
     const form = new URLSearchParams(body);
-    // The page rotates its token after load; only the current one is accepted.
-    if (form.get("at") !== "xsrf-live") return { status: 400 };
     const [[[rpcid, argsJson]]] = JSON.parse(form.get("f.req")!) as [[[string, string]]];
     const args = JSON.parse(argsJson) as unknown[];
-    // Like real Gemini: calls without the page's extension header (freshly
-    // stamped), or not sent from the page itself, fail with status 13.
-    if (!validGeminiHeader(headers["x-goog-ext-525001261-jspb"]) || headers["x-sent-by-page"] !== "1") {
-      return { text: `)]}'\n\n${JSON.stringify([["wrb.fr", rpcid, null, null, null, [13], "generic"]])}\n` };
-    }
+    const reject = () => ({ text: `)]}'\n\n${JSON.stringify([["wrb.fr", rpcid, null, null, null, [13], "generic"]])}\n` });
+    if (headers["x-built-by-page"] !== "1" || form.get("at") !== "xsrf-live") return reject();
     if (rpcid === "MaZiqc") {
-      const pinned = (args[2] as number[])[0] === 1;
-      const item = ["c_aaaa1111bbbb2222", "報稅文件", null, null, null, [1792301486, 535038000]];
-      return { text: batchexecuteBody(rpcid, [null, null, pinned ? [] : [item]]) };
+      const count = args[0] as number;
+      fakeSites.geminiPageSizes.push(count);
+      if (fakeSites.geminiRejectEnlarged && count > 35) return reject();
+      const items = geminiChats.slice(0, count).map((c) => [c.id, c.title, null, null, null, c.updatedAt]);
+      return { text: batchexecuteBody(rpcid, [null, null, items]) };
     }
-    if (rpcid === "hNvQHb" && args[0] === "c_aaaa1111bbbb2222") {
-      return { text: batchexecuteBody(rpcid, geminiChat) };
+    if (rpcid === "hNvQHb") {
+      fakeSites.geminiPageSizes.push(args[1] as number);
+      if (fakeSites.geminiRejectEnlarged && (args[1] as number) > 10) return reject();
+      const chat = geminiChats.find((c) => c.id === args[0]);
+      return chat ? { text: batchexecuteBody(rpcid, chat.payload) } : reject();
     }
-    return { status: 400 };
+    return reject();
   }
   return {
     html: `<title>Gemini (fake)</title>
 <script>WIZ_global_data={"SNlM0e":"xsrf-test","cfb2h":"bl-test","FdrFJe":"-1"}</script>
+<nav id="chats"></nav>
 <script>
   WIZ_global_data.SNlM0e = "xsrf-live";
-  // Stands in for headers Chrome adds only to the page's own requests.
-  const send = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.send = function (body) {
-    this.setRequestHeader("x-sent-by-page", "1");
-    return send.call(this, body);
-  };
-  // The page's own call on load, with the header its scripts build.
-  const now = Date.now();
-  const header = [1, null, null, null, null, null, null, null, [4, 5, 6, 8, 16, 19, 20], null, null, null, null, null, null, null,
-    ${JSON.stringify(GEMINI_SESSION)}, ["token"], null, [[Math.floor(now / 1000), (now % 1000) * 1e6]]];
-  const xhr = new XMLHttpRequest();
-  xhr.open("POST", "/_/BardChatUi/data/batchexecute?rpcids=otAQ7b&rt=c");
-  xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded;charset=utf-8");
-  xhr.setRequestHeader("x-goog-ext-525001261-jspb", JSON.stringify(header));
-  xhr.setRequestHeader("x-goog-ext-73010989-jspb", "[0]");
-  xhr.send("f.req=" + encodeURIComponent(JSON.stringify([[["otAQ7b", "[1]", null, "generic"]]])) + "&at=xsrf-live");
+  function call(rpcid, args, onload) {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/_/BardChatUi/data/batchexecute?rpcids=" + rpcid + "&rt=c");
+    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded;charset=utf-8");
+    xhr.setRequestHeader("x-built-by-page", "1");
+    xhr.onload = () => onload && onload(xhr.responseText);
+    xhr.send("f.req=" + encodeURIComponent(JSON.stringify([[[rpcid, JSON.stringify(args), null, "generic"]]])) +
+      "&at=" + encodeURIComponent(WIZ_global_data.SNlM0e));
+  }
+  call("MaZiqc", [35, null, [null, null, 1, null, null, null, null, null, null, 1]], () => {
+    document.getElementById("chats").innerHTML = "<a href='/app/aaaa1111bbbb2222'>chat</a>";
+  });
+  const open = location.pathname.startsWith("/app/") ? location.pathname.split("/")[2] : null;
+  if (open) call("hNvQHb", ["c_" + open, 10, null, 1, [0], [4], null, 1]);
 </script>`,
   };
 }
@@ -237,10 +244,16 @@ test("visiting each site syncs its whole history automatically", async () => {
   const claudeStatus = await waitForStatus("claude", (s) => typeof s.lastSuccessAt === "number");
   assert.deepEqual(claudeStatus.lastResult, { listed: 2, fetched: 2, failed: 0 });
 
+  // Gemini: the user's tab only lists chats; a sync tab opens to read them.
   const gemini = await context.newPage();
   await gemini.goto("https://gemini.google.com/app");
   const geminiStatus = await waitForStatus("gemini", (s) => typeof s.lastSuccessAt === "number");
   assert.deepEqual(geminiStatus.lastResult, { listed: 1, fetched: 1, failed: 0 });
+  // The user's tab lists 35; the sync tab's pages (the list, then the chat,
+  // which also lists on load) ask for 100.
+  assert.deepEqual(fakeSites.geminiPageSizes, [35, 100, 100, 100], "the sync tab asks for larger pages");
+  await gemini.waitForTimeout(500);
+  assert.equal(context.pages().filter((p) => p.url().startsWith("https://gemini.google.com")).length, 1, "sync tab closed");
 
   await chatgpt.close();
   await claude.close();
@@ -296,7 +309,29 @@ test("Sync opens the site in a background tab, syncs new chats and closes it", a
   assert.deepEqual(await resultTitles(popup, "壽司"), ["壽司店推薦"]);
 
   await popup.waitForTimeout(500);
-  assert.ok(!context.pages().some((p) => p.url().startsWith("https://chatgpt.com")), "background tab was closed");
+  const open = context.pages().map((p) => p.url());
+  assert.ok(!open.some((url) => url.startsWith("https://chatgpt.com")), `background tab was closed; open: ${open}`);
+  await popup.close();
+});
+
+test("Gemini falls back to the page's own page sizes when larger ones are refused", async () => {
+  geminiChats.unshift({
+    id: "c_bbbb2222cccc3333",
+    title: "週末去哪",
+    updatedAt: [1792400000, 0],
+    payload: [[geminiTurn("c_bbbb2222cccc3333", "w1", "週末去哪玩？", "可以去陽明山走走。", 1792400000)], null, null, []],
+  });
+  fakeSites.geminiRejectEnlarged = true;
+  fakeSites.geminiPageSizes = [];
+  const popup = await openPopup();
+  const before = await status("gemini");
+  await popup.locator(".source-row", { hasText: "Gemini" }).locator("button").click();
+
+  const after = await waitForStatus("gemini", (s) => s.lastSuccessAt !== before.lastSuccessAt && !s.running);
+  assert.deepEqual(after.lastResult, { listed: 2, fetched: 1, failed: 0 }, "only the new chat is read");
+  // Refused list of 100, then the plain list, then the chat page's list and read.
+  assert.deepEqual(fakeSites.geminiPageSizes, [100, 35, 35, 10], "retried with the page's defaults");
+  assert.deepEqual(await resultTitles(popup, "陽明山"), ["週末去哪"]);
   await popup.close();
 });
 

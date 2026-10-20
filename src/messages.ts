@@ -1,4 +1,4 @@
-import type { SyncMode, SyncResult } from "./sync.ts";
+import type { ConversationSummary, SyncMode, SyncResult } from "./sync.ts";
 import type { NormalizedConversation, SourceId } from "./types.ts";
 
 /** Messages sent to the background service worker. */
@@ -10,7 +10,26 @@ export type BackgroundRequest =
   | { type: "progress"; source: SourceId; done: number; total: number }
   | { type: "sync-end"; source: SourceId; result?: SyncResult; error?: string }
   /** The popup asks for a sync; opens the site in a background tab if needed. */
-  | { type: "start-sync"; source: SourceId };
+  | { type: "start-sync"; source: SourceId }
+  // Gemini, synced from the page's own calls (see gemini-backfill.ts):
+  /** A Gemini tab loaded; the reply says what it should do. */
+  | { type: "gemini-ready"; signedIn: boolean }
+  /** The page listed chats. */
+  | { type: "gemini-listed"; chats: ConversationSummary[] }
+  /** The page read a chat; `complete` when read by the sync tab, which reads whole chats. */
+  | { type: "gemini-captured"; conversation: NormalizedConversation; complete: boolean }
+  /** The sync tab finished listing chats. */
+  | { type: "gemini-list-done"; enlargeFailed: boolean }
+  /** The sync tab finished (or gave up) reading a chat. */
+  | { type: "gemini-step-done"; id: string; ok: boolean; enlargeFailed: boolean };
+
+/** What a Gemini tab should do next. */
+export type GeminiInstruction =
+  | { action: "none" }
+  | { action: "list"; scroll: boolean }
+  | { action: "capture"; id: string }
+  | { action: "navigate"; url: string }
+  | { action: "done" };
 
 /** Sent to a site's content script: run the sync the background has queued. */
 export type ContentRequest = { type: "sync" };

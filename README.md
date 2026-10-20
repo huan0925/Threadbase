@@ -53,6 +53,12 @@ chats are kept.
    account. The **Sync** buttons in the popup sync right away, opening the
    site in a background tab if needed.
 
+**Gemini syncs differently.** Gemini only answers requests its own page
+makes, so Threadbase saves what the Gemini page loads: chats you open are
+saved as you read them, and a sync opens a background Gemini tab that visits
+each new or changed chat in turn (a few seconds per chat) and closes when
+done. Leave that tab alone while it works; closing it stops the sync.
+
 If the popup says **Sign in to …**, sign in on that site and press Sync again.
 
 **"Manifest file is missing or unreadable"** when loading means the selected
@@ -68,11 +74,11 @@ folder isn't the extension: you probably downloaded "Source code" instead of
   from the sites' own tabs, using your existing session, the same way the
   sites' pages do.
 - It requests access to those three sites only, plus storage permissions.
-- On gemini.google.com, a small script also runs inside the page. Gemini
-  only accepts requests that look exactly like the page's own, so this
-  script notes the request headers Gemini's scripts set on their calls and
-  sends Threadbase's Gemini requests from the page with the same headers.
-  It doesn't read or change anything else, and keeps everything in the page.
+- On gemini.google.com, a small script also runs inside the page. It reads
+  the responses to the page's own requests that list and load chats, so
+  Threadbase never sends Gemini requests of its own. In the background tab a
+  sync opens, it asks those requests for more chats per page. It doesn't
+  read or change anything else, and keeps everything in the page.
 
 ## Limitations
 
@@ -83,7 +89,7 @@ folder isn't the extension: you probably downloaded "Source code" instead of
 - Gemini's internal format is unlabeled positional data, mapped from
   recordings of the live site, so it's the most likely to need fixes. For
   Gemini, only the reply draft you chose is saved, and images and files
-  aren't.
+  aren't. Very long Gemini chats (over 100 turns) may only be saved in part.
 - Chats you delete on a site stay in Threadbase.
 - ChatGPT archived chats and chats inside ChatGPT Projects may not be included
   yet.
@@ -96,6 +102,10 @@ folder isn't the extension: you probably downloaded "Source code" instead of
  claude.ai tab ─────────┼─ through the site's own endpoints ───►│  background worker → IndexedDB
  gemini.google.com tab ─┘  (src/providers/*)                    └─ view.html: saved copy
 ```
+
+Gemini is the exception: `src/content/gemini-page.ts` reads the responses to
+the Gemini page's own requests, and `src/gemini-backfill.ts` steers a
+background tab through the chats that need syncing.
 
 | Path | Purpose |
 | ---- | ------- |
