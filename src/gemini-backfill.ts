@@ -95,7 +95,7 @@ export function onGeminiReady(tabId: number | undefined, signedIn: boolean): Pro
     if (!state || state.tabId !== tabId) return { action: "none" };
     if (!signedIn) return finish(state, "not-logged-in");
     await patchStatus("gemini", { heartbeatAt: Date.now() });
-    if (state.phase === "list") return { action: "list", scroll: state.mode === "full" };
+    if (state.phase === "list") return { action: "list", allPages: state.mode === "full" };
     const id = state.queue[state.index];
     return id ? { action: "capture", id } : finish(state);
   });

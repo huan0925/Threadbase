@@ -28,8 +28,8 @@ export interface CapturedCall {
   rpcids: string[];
   /** The raw batchexecute response. */
   text: string;
-  /** Whether Threadbase enlarged the page's page sizes in this call. */
-  enlarged: boolean;
+  /** Whether Threadbase rewrote this call (page sizes or list page) before it went out. */
+  modified: boolean;
 }
 
 /** Asks gemini-page.ts to post again the calls it captured before the content script was listening. */

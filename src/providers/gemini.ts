@@ -33,6 +33,15 @@ const ENLARGED_PAGE_SIZE = 100;
 /** Query parameter marking a tab Threadbase opened to sync; its value says whether to enlarge. */
 export const SYNC_TAB_PARAM = "threadbase";
 
+/**
+ * sessionStorage key (shared by the page and content script worlds) holding
+ * the chat list's next-page token for the sync tab's next load. Gemini only
+ * lists further pages when its list is scrolled, which a background tab
+ * doesn't do, so the sync tab reloads and the page's own first list call
+ * asks for the next page instead.
+ */
+export const LIST_TOKEN_KEY = "threadbase:gemini-list-token";
+
 type Json = unknown;
 /** One conversation turn from hNvQHb: a prompt, its reply candidates, a timestamp. */
 type Turn = Json[];
@@ -59,11 +68,15 @@ export function argsByRpc(body: string): Map<string, Json[]> {
 }
 
 /**
- * Raises the page sizes in the page's own list (MaZiqc: [count, token, filter])
- * and read (hNvQHb: [id, turns, token, …]) calls. Returns null when the body
- * has neither, so callers send it unchanged.
+ * Rewrites the page's own list (MaZiqc: [count, token, filter]) and read
+ * (hNvQHb: [id, turns, token, …]) calls for the sync tab: raises their page
+ * sizes when `enlarge` is set, and points a first-page list call at
+ * `listToken`. Returns null when nothing changed, so callers send the body as is.
  */
-export function enlargePageSizes(body: string): string | null {
+export function rewriteSyncCall(
+  body: string,
+  options: { enlarge: boolean; listToken: string | null },
+): { body: string; usedListToken: boolean } | null {
   const form = new URLSearchParams(body);
   let freq: Json;
   try {
@@ -72,19 +85,35 @@ export function enlargePageSizes(body: string): string | null {
     return null;
   }
   let changed = false;
+  let usedListToken = false;
   for (const call of arrayAt(freq, 0)) {
     if (!Array.isArray(call) || typeof call[1] !== "string") continue;
     const sizeIndex = call[0] === RPC_LIST_CHATS ? 0 : call[0] === RPC_READ_CHAT ? 1 : -1;
     if (sizeIndex === -1) continue;
     const args = JSON.parse(call[1]) as Json[];
-    if (typeof args[sizeIndex] !== "number" || (args[sizeIndex] as number) >= ENLARGED_PAGE_SIZE) continue;
-    args[sizeIndex] = ENLARGED_PAGE_SIZE;
+    let callChanged = false;
+    if (options.enlarge && typeof args[sizeIndex] === "number" && (args[sizeIndex] as number) < ENLARGED_PAGE_SIZE) {
+      args[sizeIndex] = ENLARGED_PAGE_SIZE;
+      callChanged = true;
+    }
+    if (call[0] === RPC_LIST_CHATS && options.listToken && args[1] === null) {
+      args[1] = options.listToken;
+      usedListToken = true;
+      callChanged = true;
+    }
+    if (!callChanged) continue;
     call[1] = JSON.stringify(args);
     changed = true;
   }
   if (!changed) return null;
   form.set("f.req", JSON.stringify(freq));
-  return form.toString();
+  return { body: form.toString(), usedListToken };
+}
+
+/** The token for the chat list's next page, or null on the last page. */
+export function nextListToken(payload: Json): string | null {
+  const token = at(payload, 1);
+  return typeof token === "string" && token ? token : null;
 }
 
 /** Chats in a MaZiqc payload: [_, nextPageToken, [chat, …]]. */

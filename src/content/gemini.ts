@@ -2,7 +2,9 @@ import { sendToBackground, type GeminiInstruction } from "../messages.ts";
 import {
   chatTurns,
   isSignedIn,
+  LIST_TOKEN_KEY,
   listChats,
+  nextListToken,
   normalizeGeminiConversation,
   parseBatchResponse,
   RPC_LIST_CHATS,
@@ -26,10 +28,9 @@ import {
 
 const LIST_TIMEOUT_MS = 20_000;
 const CHAT_TIMEOUT_MS = 25_000;
-/** When scrolling the chat list, stop after this many scrolls load nothing new. */
-const IDLE_SCROLLS = 3;
-const SCROLL_PAUSE_MS = 2000;
-const SCROLL_LIMIT_MS = 3 * 60_000;
+/** sessionStorage key for the list pages the sync tab already asked for, so paging can't loop. */
+const LIST_PAGES_KEY = "threadbase:gemini-list-pages";
+const MAX_LIST_PAGES = 100;
 /**
  * Pauses before opening the next chat, so a sync reads at a person's pace:
  * longer before a full page load, which costs dozens of requests.
@@ -41,7 +42,10 @@ const LOAD_PAUSE_MS = 6000;
 const loadedMode = new URLSearchParams(location.search).get(SYNC_TAB_PARAM);
 const readChats = new Set<string>();
 let listedAt = 0;
-let enlargeFailed = false;
+/** The latest chat list's next-page token. */
+let listToken: string | null = null;
+/** Gemini refused a call Threadbase rewrote (larger pages or a list page). */
+let rewriteRefused = false;
 
 /** Problems parsing captured responses, for the diagnosis shown when a sync finds no chats. */
 let parseError = "";
@@ -54,12 +58,13 @@ function onCaptured(call: CapturedCall): void {
       payload = parseBatchResponse(call.text, rpcid);
     } catch (error) {
       parseError = error instanceof Error ? error.message : String(error);
-      // Gemini refused the page's call; if Threadbase enlarged it, that's why.
-      if (call.enlarged) enlargeFailed = true;
+      // Gemini refused the page's call; if Threadbase rewrote it, that's why.
+      if (call.modified) rewriteRefused = true;
       continue;
     }
     if (rpcid === RPC_LIST_CHATS) {
       listedAt = Date.now();
+      listToken = nextListToken(payload);
       void sendToBackground({ type: "gemini-listed", chats: listChats(payload) }).catch(() => {});
       continue;
     }
@@ -103,22 +108,6 @@ async function waitFor(condition: () => boolean, timeoutMs: number): Promise<voi
   for (const deadline = Date.now() + timeoutMs; !condition() && Date.now() < deadline; ) await sleep(250);
 }
 
-/** Scrolls the chat list to its end, so the page lists older chats too. */
-async function scrollChatList(): Promise<void> {
-  let idle = 0;
-  for (const deadline = Date.now() + SCROLL_LIMIT_MS; idle < IDLE_SCROLLS && Date.now() < deadline; ) {
-    const scroller = [...document.querySelectorAll<HTMLElement>('a[href*="/app/"]')]
-      .map(scrollableAncestor)
-      .find((element) => element !== null);
-    if (!scroller) return;
-    const before = listedAt;
-    scroller.scrollTop = scroller.scrollHeight;
-    scroller.dispatchEvent(new Event("scroll"));
-    await sleep(SCROLL_PAUSE_MS);
-    idle = listedAt === before ? idle + 1 : 0;
-  }
-}
-
 /** The page's own link to a chat, if its chat list shows it. */
 function chatLink(id: string): HTMLAnchorElement | null {
   const path = `/app/${id.replace(/^c_/, "")}`;
@@ -128,29 +117,47 @@ function chatLink(id: string): HTMLAnchorElement | null {
 }
 
 async function capture(id: string): Promise<void> {
-  await waitFor(() => readChats.has(id) || enlargeFailed, CHAT_TIMEOUT_MS);
+  await waitFor(() => readChats.has(id) || rewriteRefused, CHAT_TIMEOUT_MS);
   return follow(
-    await sendToBackground<GeminiInstruction>({ type: "gemini-step-done", id, ok: readChats.has(id), enlargeFailed }),
+    await sendToBackground<GeminiInstruction>({
+      type: "gemini-step-done",
+      id,
+      ok: readChats.has(id),
+      enlargeFailed: rewriteRefused,
+    }),
   );
 }
 
-function scrollableAncestor(element: HTMLElement): HTMLElement | null {
-  for (let node = element.parentElement; node; node = node.parentElement) {
-    const { overflowY } = getComputedStyle(node);
-    if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight) return node;
+/**
+ * In a full sync, asks for the chat list's next page by reloading: the page's
+ * own first list call then carries the token (see gemini-page.ts). Returns
+ * false once the list is complete.
+ */
+async function loadNextListPage(): Promise<boolean> {
+  const requested = JSON.parse(sessionStorage.getItem(LIST_PAGES_KEY) ?? "[]") as string[];
+  if (!listToken || rewriteRefused || requested.includes(listToken) || requested.length >= MAX_LIST_PAGES) {
+    sessionStorage.removeItem(LIST_PAGES_KEY);
+    sessionStorage.removeItem(LIST_TOKEN_KEY);
+    return false;
   }
-  return null;
+  sessionStorage.setItem(LIST_PAGES_KEY, JSON.stringify([...requested, listToken]));
+  sessionStorage.setItem(LIST_TOKEN_KEY, listToken);
+  await sleep(LOAD_PAUSE_MS);
+  location.reload();
+  return true;
 }
 
 async function follow(instruction: GeminiInstruction): Promise<void> {
   switch (instruction.action) {
     case "list":
-      await waitFor(() => listedAt > 0 || enlargeFailed, LIST_TIMEOUT_MS);
-      if (instruction.scroll && !enlargeFailed) await scrollChatList();
+      await waitFor(() => listedAt > 0 || rewriteRefused, LIST_TIMEOUT_MS);
+      if (instruction.allPages && (await loadNextListPage())) return;
+      sessionStorage.removeItem(LIST_PAGES_KEY);
+      sessionStorage.removeItem(LIST_TOKEN_KEY);
       return follow(
         await sendToBackground<GeminiInstruction>({
           type: "gemini-list-done",
-          enlargeFailed,
+          enlargeFailed: rewriteRefused,
           diagnosis: listedAt > 0 ? null : diagnosis(),
         }),
       );

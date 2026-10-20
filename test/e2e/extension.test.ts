@@ -33,6 +33,8 @@ const fakeSites = {
   geminiPageSizes: [] as number[],
   /** Makes Gemini refuse page sizes above the page's defaults. */
   geminiRejectEnlarged: false,
+  /** Page tokens the Gemini page's list calls asked for (null for the first page). */
+  geminiListTokens: [] as (string | null)[],
 };
 
 let server: Server;
@@ -162,10 +164,16 @@ function serveGemini(url: URL, body: string, headers: Record<string, string | st
     if (headers["x-built-by-page"] !== "1" || form.get("at") !== "xsrf-live") return reject();
     if (rpcid === "MaZiqc") {
       const count = args[0] as number;
+      const token = args[1] as string | null;
       fakeSites.geminiPageSizes.push(count);
+      fakeSites.geminiListTokens.push(token);
       if (fakeSites.geminiRejectEnlarged && count > 35) return reject();
-      const items = geminiChats.slice(0, count).map((c) => [c.id, c.title, null, null, null, c.updatedAt]);
-      return { text: batchexecuteBody(rpcid, [null, null, items]) };
+      // Like a real server, pages are capped (here at 2 chats) whatever the count.
+      const offset = token ? Number(token.replace("page-", "")) : 0;
+      const end = offset + Math.min(count, 2);
+      const items = geminiChats.slice(offset, end).map((c) => [c.id, c.title, null, null, null, c.updatedAt]);
+      const next = end < geminiChats.length ? `page-${end}` : null;
+      return { text: batchexecuteBody(rpcid, [null, next, items]) };
     }
     if (rpcid === "hNvQHb") {
       fakeSites.geminiPageSizes.push(args[1] as number);
@@ -344,6 +352,25 @@ test("Gemini falls back to the page's own page sizes when larger ones are refuse
   // Refused list of 100, then a fresh plain load lists 35 and opens the chat in the page.
   assert.deepEqual(fakeSites.geminiPageSizes, [100, 35, 10], "retried with the page's defaults");
   assert.deepEqual(await resultTitles(popup, "陽明山"), ["週末去哪"]);
+  await popup.close();
+});
+
+test("a full Gemini sync pages through the whole chat list", async () => {
+  geminiChats.push({
+    id: "c_cccc3333dddd4444",
+    title: "舊的食譜",
+    updatedAt: [1700000000, 0],
+    payload: [[geminiTurn("c_cccc3333dddd4444", "o1", "番茄炒蛋怎麼做？", "先炒蛋，再加番茄。", 1700000000)], null, null, []],
+  });
+  fakeSites.geminiListTokens = [];
+  const popup = await openPopup();
+  const before = await status("gemini");
+  await popup.locator(".source-row", { hasText: "Gemini" }).locator("button").click();
+
+  const after = await waitForStatus("gemini", (s) => s.lastSuccessAt !== before.lastSuccessAt && !s.running, 40_000);
+  assert.deepEqual(after.lastResult, { listed: 3, fetched: 1, failed: 0 }, "the chat on page 2 is found and read");
+  assert.deepEqual(fakeSites.geminiListTokens, [null, "page-2"], "reloads for the next page, then stops");
+  assert.deepEqual(await resultTitles(popup, "番茄"), ["舊的食譜"]);
   await popup.close();
 });
 

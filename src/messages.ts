@@ -26,7 +26,8 @@ export type BackgroundRequest =
 /** What a Gemini tab should do next. */
 export type GeminiInstruction =
   | { action: "none" }
-  | { action: "list"; scroll: boolean }
+  /** Let the page list chats; with `allPages`, page through the whole list. */
+  | { action: "list"; allPages: boolean }
   | { action: "capture"; id: string }
   /** Open a chat (`id`) or the chat list (null): in the page when it links to it, else by loading `url`. */
   | { action: "navigate"; url: string; id: string | null }

@@ -3,12 +3,13 @@ import { test } from "node:test";
 import {
   argsByRpc,
   chatTurns,
-  enlargePageSizes,
   geminiSyncUrl,
   isSignedIn,
   listChats,
+  nextListToken,
   normalizeGeminiConversation,
   parseBatchResponse,
+  rewriteSyncCall,
 } from "../src/providers/gemini.ts";
 import { batchexecuteBody, fixture } from "./helpers.ts";
 
@@ -85,15 +86,36 @@ test("reads each RPC's arguments from a request body", () => {
 });
 
 test("enlarges only the page sizes of list and read calls", () => {
-  const enlarged = enlargePageSizes(body(["MaZiqc", [35, null, [1]]], ["hNvQHb", ["c_1", 10, null, 1]], ["otAQ7b", [1]]));
-  assert.ok(enlarged);
-  const calls = argsByRpc(enlarged);
+  const rewritten = rewriteSyncCall(
+    body(["MaZiqc", [35, null, [1]]], ["hNvQHb", ["c_1", 10, null, 1]], ["otAQ7b", [1]]),
+    { enlarge: true, listToken: null },
+  );
+  assert.ok(rewritten);
+  assert.equal(rewritten.usedListToken, false);
+  const calls = argsByRpc(rewritten.body);
   assert.deepEqual(calls.get("MaZiqc"), [100, null, [1]]);
   assert.deepEqual(calls.get("hNvQHb"), ["c_1", 100, null, 1]);
   assert.deepEqual(calls.get("otAQ7b"), [1]);
-  assert.equal(new URLSearchParams(enlarged).get("at"), "token", "other fields are kept");
-  assert.equal(enlargePageSizes(body(["otAQ7b", [1]])), null);
-  assert.equal(enlargePageSizes(body(["MaZiqc", [200, null]])), null, "never shrinks");
+  assert.equal(new URLSearchParams(rewritten.body).get("at"), "token", "other fields are kept");
+  assert.equal(rewriteSyncCall(body(["otAQ7b", [1]]), { enlarge: true, listToken: null }), null);
+  assert.equal(rewriteSyncCall(body(["MaZiqc", [200, null]]), { enlarge: true, listToken: null }), null, "never shrinks");
+  assert.equal(rewriteSyncCall(body(["MaZiqc", [35, null]]), { enlarge: false, listToken: null }), null);
+});
+
+test("points a first-page list call at the next page", () => {
+  const rewritten = rewriteSyncCall(body(["MaZiqc", [35, null, [1]]]), { enlarge: false, listToken: "page-2" });
+  assert.equal(rewritten?.usedListToken, true);
+  assert.deepEqual(argsByRpc(rewritten!.body).get("MaZiqc"), [35, "page-2", [1]]);
+  const both = rewriteSyncCall(body(["MaZiqc", [35, null, [1]]]), { enlarge: true, listToken: "page-2" });
+  assert.deepEqual(argsByRpc(both!.body).get("MaZiqc"), [100, "page-2", [1]]);
+  const alreadyPaged = rewriteSyncCall(body(["MaZiqc", [35, "page-9", [1]]]), { enlarge: false, listToken: "page-2" });
+  assert.equal(alreadyPaged, null, "the page's own later pages are left alone");
+});
+
+test("reads the list's next-page token", () => {
+  assert.equal(nextListToken([null, "page-2", []]), "page-2");
+  assert.equal(nextListToken([null, null, []]), null);
+  assert.equal(nextListToken([null, "", []]), null);
 });
 
 test("builds sync tab URLs", () => {
