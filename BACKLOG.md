@@ -18,9 +18,11 @@ the README roadmap) as they ship.
 ## Next
 
 - [ ] **Repo cleanup.**
-  - Create a `main` branch and open a PR from the development branch (only
-    when asked).
-  - Delete the old v0.1.0–v0.1.2 CLI releases on GitHub (manual).
+  - [x] Create `main` and open a PR into it
+        ([huan0925/Threadbase#1](https://github.com/huan0925/Threadbase/pull/1)).
+  - [ ] Merge the PR (owner), then make `main` the default branch
+        (Settings → General → Default branch).
+  - [ ] Delete the old v0.1.0–v0.1.2 CLI releases and their tags (owner, manual).
 - [ ] **Chrome Web Store listing.** This also gives automatic updates.
   - Needs a Chrome Web Store developer account ($5, one-time; owner).
   - Needs a privacy policy page, the listing text and screenshots
