@@ -86,6 +86,8 @@ before(async () => {
   });
   worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
   extensionId = new URL(worker.url()).host;
+  // The manifest's key fixes the ID wherever the folder is, so updates keep the saved chats.
+  assert.equal(extensionId, "hlmoblnhhckpedpbdggkelclbpfpddog");
   // DEBUG_E2E=1 prints page console output and page errors.
   if (process.env.DEBUG_E2E) {
     context.on("page", (page) => {

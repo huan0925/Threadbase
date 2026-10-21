@@ -24,6 +24,8 @@ the README roadmap) as they ship.
         (Settings → General → Default branch).
   - [ ] Delete the old v0.1.0–v0.1.2 CLI releases and their tags (owner, manual).
 - [ ] **Chrome Web Store listing.** This also gives automatic updates.
+  - Remove `key` from the uploaded manifest. The store assigns its own ID,
+    so store users start fresh or restore a backup.
   - Needs a Chrome Web Store developer account ($5, one-time; owner).
   - Needs a privacy policy page, the listing text and screenshots
     (can be prepared in the repo).

@@ -32,9 +32,12 @@ Chromium-based browsers.
 5. Pin Threadbase: click the puzzle-piece icon in the toolbar, then the pin
    next to Threadbase.
 
-**To update**, download the new zip, replace the folder's contents, and click
+**To update**, download the new zip, unzip it over the old folder, and click
 the reload icon on Threadbase's card in `chrome://extensions`. Your saved
-chats are kept.
+chats are kept. They belong to Threadbase's extension ID, which stays the
+same even if you move or rename the folder. **Don't click Remove**:
+removing an extension deletes its saved data. If you do need to remove it,
+save a backup first (see [Back up your chats](#use)).
 
 ## Use
 

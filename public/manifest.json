@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "Threadbase",
   "description": "Search all your AI chats (ChatGPT, Claude, Gemini) in one place. Everything stays on your computer.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2UZI/AMYq9CcCSxePXniqqOzacImz4o8K/xWuNmCyZkksv1fqUbCnawlXqtGouGh1JEWvOL90EK0LT4qAZ60JiML6PrC4JnClUkJOCMnOPUXQvbgvbtMkEQZ5kkbWyHxEejFRPzDiKrvophTpu9uIrWdG/SAqkA6xZSHg2mwwR5N+5J93VV2JVxUW//D/4g9Xbzm6UG3+JcN7owqb8f/J7JSaAPEqvJNIjTe0OFuoA9sQRyeGohSUzlqjrX0iedhqQlICUYU0KnzN5BnxC9fvS56HskmDeXCP3rOyk8C/xi+xlR2H4iEkIr7ZszYIyaiMEPAUpjuZD8vvwjreF/BjQIDAQAB",
   "version": "0.0.0",
   "icons": {
     "16": "icons/16.png",
