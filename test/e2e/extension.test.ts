@@ -312,6 +312,49 @@ test("the saved copy shows the active branch with matches highlighted", async ()
   await popup.close();
 });
 
+test("a backup can be downloaded and restored", async () => {
+  const popup = await openPopup();
+  const [data] = await Promise.all([context.waitForEvent("page"), popup.click("text=Back up & restore")]);
+  await popup.close();
+  await data.waitForSelector("text=5 conversations saved in this browser.");
+
+  const [download] = await Promise.all([data.waitForEvent("download"), data.click("#export-json")]);
+  assert.match(download.suggestedFilename(), /^threadbase-\d{4}-\d{2}-\d{2}\.json$/);
+  const backupPath = join(mkdtempSync(join(tmpdir(), "threadbase-backup-")), download.suggestedFilename());
+  await download.saveAs(backupPath);
+  const [markdown] = await Promise.all([data.waitForEvent("download"), data.click("#export-md")]);
+  assert.match(markdown.suggestedFilename(), /\.md$/);
+
+  // Lose everything, then restore it from the file.
+  await data.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const request = indexedDB.open("threadbase");
+        request.onsuccess = () => {
+          const transaction = request.result.transaction("conversations", "readwrite");
+          transaction.objectStore("conversations").clear();
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+        };
+      }),
+  );
+  await data.reload();
+  await data.waitForSelector("text=0 conversations saved in this browser.");
+  await data.setInputFiles("#import-file", backupPath);
+  await data.waitForSelector("text=Added 5 conversations, updated 0, kept 0 you already had.");
+  await data.waitForSelector("text=5 conversations saved in this browser.");
+
+  // Importing the same file again changes nothing.
+  await data.setInputFiles("#import-file", backupPath);
+  await data.waitForSelector("text=Added 0 conversations, updated 0, kept 5 you already had.");
+  if (process.env.SCREENSHOT_DIR) await data.screenshot({ path: join(process.env.SCREENSHOT_DIR, "backup.png") });
+  await data.close();
+
+  const restored = await openPopup();
+  assert.deepEqual(await resultTitles(restored, "房貸"), ["報稅文件", "報稅文件整理"]);
+  await restored.close();
+});
+
 test("Sync opens the site in a background tab, syncs new chats and closes it", async () => {
   fakeSites.chatgpt.push({
     ...chatgptConversations[1]!,

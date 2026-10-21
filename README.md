@@ -67,6 +67,13 @@ stops the sync. If Google asks you to confirm you're not a robot, the sync
 stops and brings that tab forward: finish the check, then press Sync to
 carry on where it left off.
 
+**Back up your chats.** They live only in this browser, so removing
+Threadbase deletes them. Click **Back up & restore** at the bottom of the
+popup to download everything as a `.json` backup (or as a Markdown file to
+read). On another computer, or after reinstalling, choose that `.json` file
+on the same page to restore it. Restoring only adds chats or replaces them
+with a newer copy; it never deletes anything.
+
 If the popup says **Sign in to …**, sign in on that site and press Sync again.
 
 **"Manifest file is missing or unreadable"** when loading means the selected
@@ -77,7 +84,8 @@ folder isn't the extension: you probably downloaded "Source code" instead of
 ## Privacy
 
 - Conversations are stored in the extension's own storage (IndexedDB) in your
-  browser profile. To delete them, remove the extension.
+  browser profile. To delete them, remove the extension. Backups are files
+  you download yourself; Threadbase doesn't upload them anywhere.
 - The extension only talks to chatgpt.com, claude.ai and gemini.google.com,
   from the sites' own tabs, using your existing session, the same way the
   sites' pages do.
@@ -122,7 +130,8 @@ background tab through the chats that need syncing.
 | `src/content/` | Runs in each site's tab and syncs with the user's session. |
 | `src/background.ts` | Stores conversations, tracks sync status, opens a tab when Sync is pressed. |
 | `src/search.ts` | In-memory search across all conversations. |
-| `src/ui/` | The popup and the saved-copy viewer. |
+| `src/backup.ts` | Backup files: export, validate, merge on import, Markdown. |
+| `src/ui/` | The popup, the saved-copy viewer, and the backup page. |
 
 Conversations are stored as trees, because editing or regenerating a message
 creates branches; the viewer shows the branch you last saw.
@@ -168,11 +177,13 @@ GitHub Release.
 
 ## Roadmap
 
+The full list of open work is in [BACKLOG.md](BACKLOG.md).
+
 - [x] ChatGPT and Claude, automatic sync, search, saved copies
 - [x] Gemini
 - [ ] Chrome Web Store listing
 - [ ] Faster search for very large histories (SQLite full-text index)
-- [ ] Export your Threadbase data
+- [x] Back up and restore your Threadbase data
 - [ ] Firefox
 
 ## Acknowledgements

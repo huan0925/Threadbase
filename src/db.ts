@@ -82,3 +82,15 @@ export function countBySource(source: SourceId): Promise<number> {
 export function deleteAll(): Promise<undefined> {
   return run("readwrite", (store) => store.clear());
 }
+
+/** Writes conversations as given, in one transaction (used to restore a backup). */
+export async function putConversations(conversations: StoredConversation[]): Promise<void> {
+  const db = await open();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(CONVERSATIONS, "readwrite");
+    const store = transaction.objectStore(CONVERSATIONS);
+    for (const conversation of conversations) store.put(conversation);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+}

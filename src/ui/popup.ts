@@ -167,6 +167,10 @@ autoSync.addEventListener("change", () => {
   void chrome.storage.local.set({ [AUTO_SYNC_KEY]: Number(autoSync.value) });
 });
 
+document.querySelector("#open-data")!.addEventListener("click", () => {
+  void chrome.tabs.create({ url: chrome.runtime.getURL("data.html") });
+});
+
 void loadIndex();
 void renderSources();
 void renderAutoSync();

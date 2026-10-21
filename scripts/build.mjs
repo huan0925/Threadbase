@@ -20,6 +20,7 @@ const ctx = await context({
     "gemini-page": "src/content/gemini-page.ts",
     popup: "src/ui/popup.ts",
     view: "src/ui/view.ts",
+    data: "src/ui/data.ts",
   },
   outdir: "dist",
   bundle: true,

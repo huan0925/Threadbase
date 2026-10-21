@@ -8,9 +8,12 @@ the README roadmap) as they ship.
 - [ ] **Verify Gemini paging past 100 chats on the real site.** v0.4.4 pages
       the chat list by reloading the sync tab with the next-page token. Being
       tested against a real account with more than 100 chats.
-- [ ] **Back up and restore your data.** Export everything Threadbase saved to
-      a file, and import it again. That way the chats survive removing the
-      extension, reinstalling it, or moving to another computer.
+
+## Done
+
+- [x] **Back up and restore your data** (v0.6.0). Popup → Back up & restore.
+      Download a `.json` backup (or Markdown to read), and import it again.
+      Import adds missing chats and keeps the newer copy of each.
 
 ## Next
 
