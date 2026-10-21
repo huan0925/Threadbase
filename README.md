@@ -81,6 +81,24 @@ folder isn't the extension: you probably downloaded "Source code" instead of
 `threadbase-extension.zip`, or picked the folder one level above
 `manifest.json`.
 
+## What's included
+
+Threadbase saves what each site's **web version** shows in its chat history,
+for the account signed in on that site in this browser.
+
+- **Included:** chats from the sites' phone and desktop apps, because they're
+  stored in your account and show up on the website too.
+- **Not included:**
+  - Chats the services never keep in your history: ChatGPT's Temporary
+    Chat, Claude's incognito chats, and Gemini chats made while Gemini Apps
+    Activity is off.
+  - Other accounts. Only the account signed in on each site is synced. For
+    Gemini with several Google accounts signed in, that's the default
+    account.
+  - Chats you deleted on a site before Threadbase saved them.
+  - For what isn't synced yet (archived ChatGPT chats, ChatGPT Projects,
+    images and files), see [Limitations](#limitations).
+
 ## Privacy
 
 - Conversations are stored in the extension's own storage (IndexedDB) in your
