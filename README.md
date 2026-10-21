@@ -32,12 +32,42 @@ Chromium-based browsers.
 5. Pin Threadbase: click the puzzle-piece icon in the toolbar, then the pin
    next to Threadbase.
 
-**To update**, download the new zip, unzip it over the old folder, and click
-the reload icon on Threadbase's card in `chrome://extensions`. Your saved
-chats are kept. They belong to Threadbase's extension ID, which stays the
-same even if you move or rename the folder. **Don't click Remove**:
-removing an extension deletes its saved data. If you do need to remove it,
-save a backup first (see [Back up your chats](#use)).
+### Updating
+
+> [!WARNING]
+> **Clicking Remove on Threadbase in `chrome://extensions` deletes all your
+> saved chats.** Chrome deletes an extension's data when you remove it, even
+> if you install the same extension again right after. To update, don't
+> remove the old version. Reload it instead, as below.
+
+**Recommended: keep the old version and reload.** Your saved chats are kept.
+
+1. Download the new `threadbase-extension.zip`.
+2. Unzip it over the old folder, replacing its files.
+3. In `chrome://extensions`, click the reload icon (↻) on Threadbase's card.
+
+Moving or renaming the folder is fine. Your chats belong to Threadbase's
+extension ID, which stays the same wherever the folder is.
+
+**If you must remove the old version**, back up first:
+
+1. In the old version, click **Back up & restore** at the bottom of the popup,
+   then **Download backup (.json)**.
+2. Remove the old version, then install the new one with **Load unpacked**.
+3. In the new version, open **Back up & restore** and choose the backup file
+   under **Restore**.
+
+Restoring takes seconds. The next sync only picks up chats that changed
+since the backup, so nothing is downloaded again.
+
+**Updating from v0.6.0 or earlier to v0.6.1 or later** is a one-time
+exception. Versions before 0.6.1 had no fixed extension ID, so the new
+version starts empty. To bring your chats over:
+
+1. Download a backup from the old version.
+2. Load the new version from a new folder with **Load unpacked**.
+3. Restore the backup in the new version.
+4. Remove the old version.
 
 ## Use
 
