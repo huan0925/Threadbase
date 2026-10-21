@@ -43,5 +43,10 @@ the README roadmap) as they ship.
 - [ ] More services: Perplexity, Microsoft Copilot, Grok, DeepSeek.
 - [ ] Render Markdown (code blocks, lists, tables) in the saved-copy viewer.
 - [ ] Firefox support.
-- [ ] Faster search for very large histories (full-text index, for example
-      SQLite FTS via sqlite-wasm).
+- [ ] Full-text index for very large histories. Since v0.7.0 the popup opens
+      without reading every chat, and searches scan newest-first, stopping
+      at 50 results. A search that matches nothing still reads every chat's
+      text, about 4 s at 20,000 chats. Reading the text from IndexedDB is
+      the floor, so going faster needs an index (for example SQLite FTS via
+      sqlite-wasm). It must still find 2-character Chinese words, which
+      FTS5's trigram tokenizer can't.

@@ -1,23 +1,33 @@
 import type { SourceId, StoredConversation } from "./types.ts";
 
 /**
- * In-memory search over every stored conversation. Substring matching works
- * the same for languages written without spaces (Chinese, Japanese) and
- * stays fast for personal-sized histories.
+ * Substring search, which works the same for languages written without
+ * spaces (Chinese, Japanese). Each conversation has a compact search record
+ * (lowercased text, no message structure) kept next to it, so searching
+ * reads far less than the conversations themselves, and newest-first
+ * scanning can stop as soon as a page of results is found.
  */
 
-export interface SearchableConversation {
-  conversation: StoredConversation;
+export interface SearchRecord {
+  /** Same key as the conversation. */
+  key: string;
+  source: SourceId;
+  sourceId: string;
   title: string;
-  /** Lowercased message contents, parallel to conversation.messages. */
+  url: string;
+  createdAt: number | null;
+  updatedAt: number | null;
+  /** Ascending order is most recently updated first. */
+  order: number;
+  lowerTitle: string;
+  /** Lowercased message contents, parallel to the conversation's messages. */
   contents: string[];
 }
 
-export interface SearchHit {
-  conversation: StoredConversation;
-  /** Message whose excerpt is shown, or null when only the title matched. */
+export interface SearchMatch {
+  record: SearchRecord;
+  /** Message that contains the most terms (its excerpt is shown), or null when only the title matched. */
   messageIndex: number | null;
-  snippet: string;
   terms: string[];
 }
 
@@ -26,10 +36,17 @@ export interface SearchOptions {
   limit?: number;
 }
 
-export function toSearchable(conversation: StoredConversation): SearchableConversation {
+export function toSearchRecord(conversation: StoredConversation): SearchRecord {
   return {
-    conversation,
-    title: conversation.title.toLowerCase(),
+    key: conversation.key,
+    source: conversation.source,
+    sourceId: conversation.sourceId,
+    title: conversation.title,
+    url: conversation.url,
+    createdAt: conversation.createdAt,
+    updatedAt: conversation.updatedAt,
+    order: -(conversation.updatedAt ?? conversation.createdAt ?? 0),
+    lowerTitle: conversation.title.toLowerCase(),
     contents: conversation.messages.map((m) => m.content.toLowerCase()),
   };
 }
@@ -48,42 +65,43 @@ export function parseQuery(query: string): string[] {
   return terms;
 }
 
-/** Matching conversations, most recently updated first. */
-export function search(index: SearchableConversation[], query: string, options: SearchOptions = {}): SearchHit[] {
-  const terms = parseQuery(query);
-  if (terms.length === 0) return [];
+/** The match if every term appears in the record, else null. Terms must be lowercase (see parseQuery). */
+export function matchRecord(record: SearchRecord, terms: string[]): SearchMatch | null {
+  if (terms.length === 0) return null;
+  const everyTermFound = terms.every(
+    (term) => record.lowerTitle.includes(term) || record.contents.some((content) => content.includes(term)),
+  );
+  if (!everyTermFound) return null;
 
-  const hits: SearchHit[] = [];
-  for (const entry of index) {
-    if (options.source && entry.conversation.source !== options.source) continue;
-    const everyTermFound = terms.every(
-      (term) => entry.title.includes(term) || entry.contents.some((content) => content.includes(term)),
-    );
-    if (everyTermFound) hits.push(toHit(entry, terms));
-  }
-
-  hits.sort((a, b) => recency(b.conversation) - recency(a.conversation));
-  return options.limit ? hits.slice(0, options.limit) : hits;
-}
-
-function recency(conversation: StoredConversation): number {
-  return conversation.updatedAt ?? conversation.createdAt ?? 0;
-}
-
-/** Shows the message that contains the most query terms. */
-function toHit(entry: SearchableConversation, terms: string[]): SearchHit {
   let best: number | null = null;
   let bestCount = 0;
-  entry.contents.forEach((content, index) => {
+  record.contents.forEach((content, index) => {
     const count = terms.filter((term) => content.includes(term)).length;
     if (count > bestCount) {
       best = index;
       bestCount = count;
     }
   });
-  const snippet =
-    best === null ? "" : buildSnippet(entry.conversation.messages[best]!.content, terms);
-  return { conversation: entry.conversation, messageIndex: best, snippet, terms };
+  return { record, messageIndex: best, terms };
+}
+
+/** Matching records, most recently updated first. */
+export function search(records: SearchRecord[], query: string, options: SearchOptions = {}): SearchMatch[] {
+  const terms = parseQuery(query);
+  const matches: SearchMatch[] = [];
+  for (const record of [...records].sort((a, b) => a.order - b.order)) {
+    if (options.source && record.source !== options.source) continue;
+    const match = matchRecord(record, terms);
+    if (match) matches.push(match);
+    if (options.limit && matches.length >= options.limit) break;
+  }
+  return matches;
+}
+
+/** The excerpt to show for a match, from the stored conversation's original text. */
+export function matchSnippet(conversation: StoredConversation, match: SearchMatch): string {
+  const message = match.messageIndex === null ? undefined : conversation.messages[match.messageIndex];
+  return message ? buildSnippet(message.content, match.terms) : "";
 }
 
 /** Returns a single-line excerpt of `content` around the first matching term. */

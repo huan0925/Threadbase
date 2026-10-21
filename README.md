@@ -95,14 +95,16 @@ version starts empty. To bring your chats over:
    background tabs and never interrupts you: if a service needs you to sign
    in or pass a robot check, the popup says so and the tab is closed.
 
-**Gemini syncs differently.** Gemini only answers requests its own page
-makes, so Threadbase saves what the Gemini page loads: chats you open are
-saved as you read them, and a sync opens a background Gemini tab that opens
-each new or changed chat in turn from Gemini's own chat list, a few seconds
-apart, and closes when done. Leave that tab alone while it works; closing it
-stops the sync. If Google asks you to confirm you're not a robot, the sync
-stops and brings that tab forward: finish the check, then press Sync to
-carry on where it left off.
+**Gemini syncs differently.**
+- The first Gemini sync is much slower: about 5 seconds per chat, so 100
+  chats take roughly 10 minutes.
+- While it runs, a Gemini tab stays open in the background. Leave it alone;
+  closing it stops the sync.
+- If Google asks you to confirm you're not a robot, the sync stops and that
+  tab comes to the front. Finish the check, then press **Sync**. It carries
+  on where it left off.
+
+[Why Gemini is different](#why-gemini-is-different) explains why.
 
 **Back up your chats.** They live only in this browser, so removing
 Threadbase deletes them. Click **Back up & restore** at the bottom of the
@@ -117,6 +119,43 @@ If the popup says **Sign in to …**, sign in on that site and press Sync again.
 folder isn't the extension: you probably downloaded "Source code" instead of
 `threadbase-extension.zip`, or picked the folder one level above
 `manifest.json`.
+
+## Why Gemini is different
+
+**ChatGPT and Claude are simple.** Their web pages load your chat list and
+each chat with plain requests to the site. Threadbase sends the same
+requests from the site's own tab, using your signed-in session. It needs no
+extra tab and fetches many chats a minute.
+
+**Gemini only answers its own page.** Google rejects Gemini requests that
+weren't made by the Gemini page's own code. Threadbase tried sending the same
+requests itself, with the page's tokens and headers, and Google turned every
+one down. So Threadbase can't ask Gemini for your chats. Instead it works
+alongside the page:
+
+1. A small script inside the Gemini page reads the replies to the page's
+   own requests: the chat list in the sidebar, and each chat as it loads.
+   It doesn't send requests of its own.
+2. To sync, Threadbase opens a Gemini tab in the background. It clicks each
+   new or changed chat in Gemini's own sidebar, one at a time, and saves
+   what the page loads.
+3. It waits a few seconds between chats, at a pace like a person reading.
+   Opening chats much faster makes Google suspect a robot.
+
+**What this means for you:**
+
+- **The first sync is slow.** It takes about 5 seconds per chat. After that,
+  only new and changed chats are opened, so later syncs are quick.
+- **A tab is open while it syncs.** It closes by itself when done.
+- **Google may still ask for a robot check.** Threadbase never answers it
+  for you. It stops and shows you the tab, and you finish the check
+  yourself.
+- **Chats you open yourself are saved right away**, since the page loads
+  them anyway.
+- **Gemini is the most likely to break.** Its replies are unlabeled lists
+  of values. Threadbase finds titles, messages and dates by their position
+  in those lists, so when Google changes the page, Gemini sync may need a
+  Threadbase update.
 
 ## What's included
 
@@ -184,7 +223,7 @@ background tab through the chats that need syncing.
 | `src/sync.ts` | Downloads only conversations that are new or changed since the last sync. |
 | `src/content/` | Runs in each site's tab and syncs with the user's session. |
 | `src/background.ts` | Stores conversations, tracks sync status, opens a tab when Sync is pressed. |
-| `src/search.ts` | In-memory search across all conversations. |
+| `src/search.ts` | Search records (compact lowercased text) and matching; the popup scans them newest first. |
 | `src/backup.ts` | Backup files: export, validate, merge on import, Markdown. |
 | `src/ui/` | The popup, the saved-copy viewer, and the backup page. |
 
@@ -237,7 +276,8 @@ The full list of open work is in [BACKLOG.md](BACKLOG.md).
 - [x] ChatGPT and Claude, automatic sync, search, saved copies
 - [x] Gemini
 - [ ] Chrome Web Store listing
-- [ ] Faster search for very large histories (SQLite full-text index)
+- [x] Faster search: the popup no longer reads every chat when it opens, and searches stop at the newest 50 results
+- [ ] Full-text index for very large histories
 - [x] Back up and restore your Threadbase data
 - [ ] Firefox
 

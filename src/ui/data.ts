@@ -1,5 +1,5 @@
 import { backupFileName, BackupError, conversationsToImport, createBackup, parseBackup, toMarkdown } from "../backup.ts";
-import { allConversations, putConversations } from "../db.ts";
+import { allConversations, countAll, putConversations } from "../db.ts";
 
 const summary = document.querySelector<HTMLElement>("#summary")!;
 const result = document.querySelector<HTMLElement>("#result")!;
@@ -17,7 +17,7 @@ function report(text: string, error = false): void {
 }
 
 async function renderSummary(): Promise<void> {
-  const count = (await allConversations()).length;
+  const count = await countAll();
   summary.textContent = `${plural(count, "conversation")} saved in this browser.`;
   exportJson.disabled = exportMarkdown.disabled = count === 0;
 }

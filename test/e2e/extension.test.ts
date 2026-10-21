@@ -475,3 +475,38 @@ test("a signed-out site asks the user to sign in and leaves the tab open", async
   assert.ok(context.pages().some((p) => p.url().startsWith("https://claude.ai")), "tab stays open for signing in");
   await popup.close();
 });
+
+test("chats saved by earlier versions become searchable after an update", async () => {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/data.html`);
+  // Replace the database with one in the v1 layout (conversations only).
+  await page.evaluate(async () => {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.deleteDatabase("threadbase");
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+    const db = await new Promise<IDBDatabase>((resolve) => {
+      const request = indexedDB.open("threadbase", 1);
+      request.onupgradeneeded = () => request.result.createObjectStore("conversations", { keyPath: "key" }).createIndex("source", "source");
+      request.onsuccess = () => resolve(request.result);
+    });
+    await new Promise<void>((resolve) => {
+      const transaction = db.transaction("conversations", "readwrite");
+      transaction.objectStore("conversations").put({
+        key: "claude:old", source: "claude", sourceId: "old", title: "Sourdough starter", createdAt: 1, updatedAt: 2,
+        url: "https://claude.ai/chat/old", activeLeafSourceId: null, listedUpdatedAt: 2, syncedAt: 3,
+        messages: [{ sourceId: "m1", parentSourceId: null, role: "user", content: "How often do I feed a Sourdough starter?", createdAt: null, model: null }],
+      });
+      transaction.oncomplete = () => resolve();
+    });
+    db.close();
+  });
+  await page.close();
+
+  const popup = await openPopup();
+  await popup.waitForSelector("text=Search 1 conversation across");
+  assert.deepEqual(await resultTitles(popup, "feed sourdough"), ["Sourdough starter"]);
+  await popup.waitForSelector("text=How often do I feed a Sourdough starter?");
+  await popup.close();
+});
