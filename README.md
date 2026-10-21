@@ -46,8 +46,12 @@ Chromium-based browsers.
 2. Unzip it over the old folder, replacing its files.
 3. In `chrome://extensions`, click the reload icon (↻) on Threadbase's card.
 
-Moving or renaming the folder is fine. Your chats belong to Threadbase's
-extension ID, which stays the same wherever the folder is.
+**Moving or renaming the folder.** Chrome loads Threadbase from its
+folder, so once the folder is moved or renamed, Threadbase can't load from
+its old location. Right away, click **Load unpacked** in
+`chrome://extensions` and select the folder in its new place. Your chats
+are kept: they belong to Threadbase's extension ID, which stays the same
+wherever the folder is. To be safe, download a backup before moving it.
 
 **If you must remove the old version**, back up first:
 
