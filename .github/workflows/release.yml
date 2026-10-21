@@ -1,0 +1,51 @@
+name: Release
+
+# Publishes a GitHub Release with the packaged extension. Trigger it with
+# "Run workflow" in the Actions tab (it tags the selected commit with the
+# version from package.json) or by pushing a matching tag like v0.2.0.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Resolve release tag
+        run: |
+          tag="v$(node -p 'require("./package.json").version')"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "$tag" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $tag" >&2
+            exit 1
+          fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Package
+        run: cd dist && zip -r ../threadbase-extension.zip .
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Creates the tag on this commit when it doesn't exist yet (manual runs).
+        run: |
+          cat > notes.md <<'NOTES'
+          ## Install
+
+          Download **threadbase-extension.zip** below (not "Source code"), unzip it, then in
+          `chrome://extensions` turn on **Developer mode**, click **Load unpacked** and select
+          the unzipped folder. See the [README](https://github.com/huan0925/Threadbase#install) for details.
+          NOTES
+          gh release create "$TAG" threadbase-extension.zip --target "$GITHUB_SHA" --title "$TAG" \
+            --notes-file notes.md --generate-notes

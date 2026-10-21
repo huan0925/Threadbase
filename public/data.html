@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Back up &amp; restore · Threadbase</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="viewer data-page">
+      <h1>Back up &amp; restore</h1>
+      <p class="meta" id="summary"></p>
+
+      <section>
+        <h2>Back up</h2>
+        <p>
+          Your chats are stored only in this browser. Removing Threadbase deletes them. Save a
+          backup to keep them, or to move them to another computer.
+        </p>
+        <div class="actions">
+          <button id="export-json" class="primary-button">Download backup (.json)</button>
+          <button id="export-md" class="sync-button">Download as Markdown (.md)</button>
+        </div>
+        <p class="hint">The Markdown file is for reading. To restore, use the .json backup.</p>
+      </section>
+
+      <section>
+        <h2>Restore</h2>
+        <p>
+          Import a .json backup. Chats you don't have yet are added. If you already have a
+          chat, Threadbase keeps the newer copy. Nothing is deleted.
+        </p>
+        <div class="actions">
+          <label class="primary-button file-button">
+            Choose backup file…
+            <input id="import-file" type="file" accept=".json,application/json" hidden />
+          </label>
+        </div>
+      </section>
+
+      <p id="result" class="result-message" role="status"></p>
+    </main>
+    <script src="data.js"></script>
+  </body>
+</html>

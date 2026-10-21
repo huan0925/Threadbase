@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Threadbase</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="popup">
+    <header>
+      <input id="query" type="search" placeholder="Search all your AI chats…" autofocus />
+    </header>
+    <main id="results"></main>
+    <footer>
+      <div id="sources"></div>
+      <div class="footer-row">
+        <button id="open-data" class="link-button">Back up &amp; restore</button>
+        <label class="auto-sync">
+          Auto-sync
+          <select id="auto-sync" aria-label="How often to sync on its own"></select>
+        </label>
+      </div>
+    </footer>
+    <script src="popup.js"></script>
+  </body>
+</html>
