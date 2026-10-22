@@ -24,6 +24,8 @@ the README roadmap) as they ship.
         (Settings → General → Default branch).
   - [ ] Delete the old v0.1.0–v0.1.2 CLI releases and their tags (owner, manual).
 - [ ] **Chrome Web Store listing.** This also gives automatic updates.
+  - Remove `key` from the uploaded manifest. The store assigns its own ID,
+    so store users start fresh or restore a backup.
   - Needs a Chrome Web Store developer account ($5, one-time; owner).
   - Needs a privacy policy page, the listing text and screenshots
     (can be prepared in the repo).
@@ -41,5 +43,10 @@ the README roadmap) as they ship.
 - [ ] More services: Perplexity, Microsoft Copilot, Grok, DeepSeek.
 - [ ] Render Markdown (code blocks, lists, tables) in the saved-copy viewer.
 - [ ] Firefox support.
-- [ ] Faster search for very large histories (full-text index, for example
-      SQLite FTS via sqlite-wasm).
+- [ ] Full-text index for very large histories. Since v0.7.0 the popup opens
+      without reading every chat, and searches scan newest-first, stopping
+      at 50 results. A search that matches nothing still reads every chat's
+      text, about 4 s at 20,000 chats. Reading the text from IndexedDB is
+      the floor, so going faster needs an index (for example SQLite FTS via
+      sqlite-wasm). It must still find 2-character Chinese words, which
+      FTS5's trigram tokenizer can't.

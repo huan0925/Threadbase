@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { activeBranch, buildSnippet, highlightSegments, parseQuery, search, toSearchable } from "../src/search.ts";
+import { activeBranch, buildSnippet, highlightSegments, matchRecord, matchSnippet, parseQuery, search, toSearchRecord } from "../src/search.ts";
 import type { NormalizedMessage, StoredConversation } from "../src/types.ts";
 
 function message(sourceId: string, content: string, parentSourceId: string | null, role: NormalizedMessage["role"] = "user"): NormalizedMessage {
@@ -46,11 +46,11 @@ const postgres = stored({
     message("m2", "Use a GIN index with pg_trgm. It also speeds up ILIKE.", "m1", "assistant"),
   ],
 });
-const index = [postgres, taxes].map(toSearchable);
+const index = [postgres, taxes].map(toSearchRecord);
 
 test("finds Chinese terms of any length", () => {
-  assert.deepEqual(search(index, "扣繳憑單").map((h) => h.conversation.sourceId), ["taxes"]);
-  assert.deepEqual(search(index, "房貸").map((h) => h.conversation.sourceId), ["taxes"]);
+  assert.deepEqual(search(index, "扣繳憑單").map((h) => h.record.sourceId), ["taxes"]);
+  assert.deepEqual(search(index, "房貸").map((h) => h.record.sourceId), ["taxes"]);
 });
 
 test("matches terms anywhere in the conversation, case-insensitively", () => {
@@ -67,18 +67,25 @@ test("keeps quoted phrases together", () => {
 
 test("orders by recency, filters by source and limits", () => {
   assert.deepEqual(search(index, "index", { source: "chatgpt" }), []);
-  const many = [taxes, { ...taxes, sourceId: "t2", key: "chatgpt:t2", updatedAt: 300 }].map(toSearchable);
-  assert.deepEqual(search(many, "房貸").map((h) => h.conversation.sourceId), ["t2", "taxes"]);
+  const many = [taxes, { ...taxes, sourceId: "t2", key: "chatgpt:t2", updatedAt: 300 }].map(toSearchRecord);
+  assert.deepEqual(search(many, "房貸").map((h) => h.record.sourceId), ["t2", "taxes"]);
   assert.equal(search(many, "房貸", { limit: 1 }).length, 1);
 });
 
 test("shows the message containing the most terms", () => {
   const [hit] = search(index, "房貸 利息");
   assert.equal(hit?.messageIndex, 3);
-  assert.equal(hit?.snippet, "房貸利息可以扣除嗎？");
+  assert.equal(matchSnippet(taxes, hit!), "房貸利息可以扣除嗎？");
   const [titleOnly] = search(index, "trigram");
   assert.equal(titleOnly?.messageIndex, null);
-  assert.equal(titleOnly?.snippet, "");
+  assert.equal(matchSnippet(postgres, titleOnly!), "");
+});
+
+test("search records sort newest first and match like the full text", () => {
+  assert.ok(toSearchRecord(taxes).order < toSearchRecord(postgres).order, "newer sorts first");
+  assert.equal(toSearchRecord({ ...taxes, updatedAt: null, createdAt: null }).order, -0);
+  assert.equal(matchRecord(toSearchRecord(postgres), []), null, "an empty query matches nothing");
+  assert.deepEqual(toSearchRecord(postgres).contents, postgres.messages.map((m) => m.content.toLowerCase()));
 });
 
 test("builds single-line snippets", () => {

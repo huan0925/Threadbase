@@ -143,6 +143,16 @@ body.popup {
   font-size: 12px;
 }
 
+.searching {
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.result-snippet:empty {
+  display: none;
+}
+
 .result-snippet {
   margin-top: 4px;
   color: var(--muted);
